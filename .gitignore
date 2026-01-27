@@ -1,0 +1,66 @@
+# ========================== 核心 Xcode 忽略规则 ==========================
+# 编译产物目录
+build/
+DerivedData/
+
+# Xcode 项目包内的用户个性化配置（必忽略）
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcsettings
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+
+# Xcode 个人配置文件
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# ========================== 第三方依赖工具 ==========================
+# CocoaPods
+Pods/
+!Pods/Podfile.lock  # Podfile.lock 需要提交，锁定第三方库版本
+# Carthage
+Carthage/Build/
+# Swift Package Manager (SPM 无需忽略，依赖会自动拉取)
+
+# ========================== 系统/临时文件 ==========================
+# macOS 系统隐藏文件
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+# 桌面服务文件
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+# Windows 临时文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ========================== 测试/日志文件 ==========================
+# 单元测试/UI 测试临时文件
+test-reports/
+coverage/
+# 日志文件
+*.log
+*.crash
+
+# ========================== 其他工具缓存 ==========================
+# 代码格式化工具（如 SwiftFormat）
+.swiftformat.cache
+# 编辑器配置（如需共享可注释掉）
+.idea/
+.vscode/
+*.sublime-*
