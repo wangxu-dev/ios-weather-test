@@ -17,7 +17,7 @@ final class WeatherViewModel: ObservableObject {
         case failed(String)
     }
 
-    @Published var city: String = "北京"
+    @Published var city: String = ""
     @Published private(set) var state: State = .idle
 
     private let weatherProvider: any WeatherProviding

@@ -9,61 +9,168 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel: WeatherViewModel
+    @FocusState private var cityFieldIsFocused: Bool
 
     init(weatherProvider: any WeatherProviding) {
         _viewModel = StateObject(wrappedValue: WeatherViewModel(weatherProvider: weatherProvider))
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    TextField("城市名（例如：北京）", text: $viewModel.city)
-                        .textFieldStyle(.roundedBorder)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.05, blue: 0.12),
+                    Color(red: 0.18, green: 0.06, blue: 0.48),
+                    Color(red: 0.26, green: 0.79, blue: 0.68),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-                    Button("查询") {
-                        viewModel.fetchWeather()
+            GlassEffectContainer {
+                ZStack {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            if shouldShowContentCard {
+                                contentCard
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal)
+                        .padding(.top, 88)
+                        .padding(.bottom, 72)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .scrollDismissesKeyboard(.interactively)
+
+                    VStack(spacing: 0) {
+                        searchBar
+                            .padding(.horizontal)
+                            .padding(.top, 10)
+
+                        Spacer(minLength: 0)
+                    }
                 }
-
-                content
-
-                Spacer(minLength: 0)
             }
-            .padding()
-            .navigationTitle("天气")
         }
+        .onTapGesture {
+            cityFieldIsFocused = false
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("输入城市名", text: $viewModel.city)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+                .submitLabel(.search)
+                .focused($cityFieldIsFocused)
+                .onSubmit {
+                    cityFieldIsFocused = false
+                    viewModel.fetchWeather()
+                }
+        }
+        .font(.subheadline.weight(.semibold))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .glassEffect(in: .rect(cornerRadius: 18))
+        .shadow(color: .black.opacity(0.20), radius: 14, y: 10)
+    }
+
+    // Keep the home screen clean: only show the card when we have something meaningful to show.
+    private var shouldShowContentCard: Bool {
+        switch viewModel.state {
+        case .idle:
+            return false
+        case .loading, .loaded, .failed:
+            return true
+        }
+    }
+
+    private var contentCard: some View {
+        VStack(spacing: 12) {
+            content
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(in: .rect(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.2), radius: 15, y: 10)
     }
 
     @ViewBuilder
     private var content: some View {
         switch viewModel.state {
         case .idle:
-            Text("输入城市名，点击“查询”。")
-                .foregroundStyle(.secondary)
+            EmptyView()
 
         case .loading:
-            HStack(spacing: 8) {
-                ProgressView()
-                Text("加载中…")
-                    .foregroundStyle(.secondary)
-            }
+            GlassNotice(
+                systemImage: "hourglass",
+                title: "加载中",
+                message: "正在获取天气数据…"
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
 
         case .loaded(let payload):
+            loadedView(payload)
+
+        case .failed(let message):
+            GlassNotice(
+                systemImage: "exclamationmark.triangle.fill",
+                title: "请求失败",
+                message: message
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func loadedView(_ payload: WeatherPayload) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
             if let info = payload.weatherInfo {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("\(info.city)  \(info.weather)")
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(info.city)
+                            .font(.title2.weight(.semibold))
+                        Text(info.weather)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
 
-                    Text("更新时间：\(info.updateTime)")
-                        .foregroundStyle(.secondary)
+                    HStack(alignment: .center, spacing: 14) {
+                        Image(systemName: symbolName(for: info.weather))
+                            .font(.system(size: 48, weight: .semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.primary.opacity(0.92))
+                            .shadow(color: .black.opacity(0.22), radius: 14, y: 8)
 
-                    Text("温度：\(info.tempLow) ~ \(info.tempHigh)")
-                    Text("风：\(info.windDirection) \(info.windScale)")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(info.tempHigh)°")
+                                .font(.system(size: 44, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .contentTransition(.numericText())
+
+                            Text("最低 \(info.tempLow)°")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary.opacity(0.95))
+                                .monospacedDigit()
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+
+                    HStack(spacing: 10) {
+                        GlassPill(systemImage: "wind", text: "\(info.windDirection) \(info.windScale)")
+                        GlassPill(systemImage: "clock", text: info.updateTime)
+                    }
+
+                    HStack(spacing: 10) {
+                        MetricChip(title: "最低", value: "\(info.tempLow)°")
+                        MetricChip(title: "最高", value: "\(info.tempHigh)°")
+                        Spacer(minLength: 0)
+                    }
                 }
             } else {
                 Text("没有拿到 weatherInfo。")
@@ -73,38 +180,115 @@ struct ContentView: View {
             if !payload.alarms.isEmpty {
                 Divider()
 
-                Text("预警")
-                    .font(.headline)
-
-                List(payload.alarms) { alarm in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(alarm.title)
-                            .fontWeight(.semibold)
-                        Text(alarm.type)
-                            .foregroundStyle(.secondary)
-                        Text(alarm.publishTime)
-                            .foregroundStyle(.secondary)
-                        Text(alarm.details)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                DisclosureGroup {
+                    VStack(spacing: 10) {
+                        ForEach(payload.alarms) { alarm in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(alarm.title)
+                                    .fontWeight(.semibold)
+                                Text(alarm.type)
+                                    .foregroundStyle(.secondary)
+                                Text(alarm.publishTime)
+                                    .foregroundStyle(.secondary)
+                                    .font(.footnote)
+                                Text(alarm.details)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .glassEffect(in: .rect(cornerRadius: 16))
+                        }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.top, 6)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                        Text("预警")
+                            .font(.headline)
+                        Spacer(minLength: 0)
+                    }
                 }
-                .listStyle(.plain)
-            }
-
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: 8) {
-                Text("请求失败")
-                    .font(.headline)
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func symbolName(for weatherText: String) -> String {
+        if weatherText.contains("晴") { return "sun.max.fill" }
+        if weatherText.contains("云") || weatherText.contains("阴") { return "cloud.fill" }
+        if weatherText.contains("雨") { return "cloud.rain.fill" }
+        if weatherText.contains("雪") { return "cloud.snow.fill" }
+        if weatherText.contains("雾") { return "cloud.fog.fill" }
+        if weatherText.contains("沙") { return "sun.dust.fill" }
+        return "cloud.sun.fill"
     }
 }
 
 #Preview {
     ContentView(weatherProvider: MockWeatherProvider())
+}
+
+private struct MetricChip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary.opacity(0.95))
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassEffect(in: .rect(cornerRadius: 14))
+    }
+}
+
+private struct GlassPill: View {
+    let systemImage: String
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary.opacity(0.95))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .glassEffect()
+    }
+}
+
+private struct GlassNotice: View {
+    let systemImage: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.primary.opacity(0.9))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary.opacity(0.95))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .glassEffect(in: .rect(cornerRadius: 16))
+    }
 }
