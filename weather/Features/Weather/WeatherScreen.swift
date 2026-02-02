@@ -148,7 +148,7 @@ struct WeatherScreen: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(in: .rect(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 8)
+        .shadow(color: shadowColor, radius: 12, y: 8)
     }
 
     @ViewBuilder
@@ -194,8 +194,8 @@ struct WeatherScreen: View {
                         Image(systemName: symbolName(for: info.weather))
                             .font(.system(size: 48, weight: .semibold))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.primary.opacity(0.92))
-                            .shadow(color: .black.opacity(0.22), radius: 14, y: 8)
+                            .foregroundStyle(.primary)
+                            .shadow(color: shadowColor.opacity(0.85), radius: 14, y: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(info.tempHigh)°")
@@ -205,7 +205,7 @@ struct WeatherScreen: View {
 
                             Text("最低 \(info.tempLow)°")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary.opacity(0.95))
+                                .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
 
@@ -273,6 +273,18 @@ struct WeatherScreen: View {
         if weatherText.contains("雾") { return "cloud.fog.fill" }
         if weatherText.contains("沙") { return "sun.dust.fill" }
         return "cloud.sun.fill"
+    }
+
+    private var shadowColor: Color {
+        // Softer shadows in Light mode, slightly stronger in Dark mode.
+        switch colorScheme {
+        case .light:
+            return Color.black.opacity(0.10)
+        case .dark:
+            return Color.black.opacity(0.18)
+        @unknown default:
+            return Color.black.opacity(0.14)
+        }
     }
 
     private var footer: some View {

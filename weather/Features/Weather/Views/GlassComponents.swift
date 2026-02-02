@@ -15,7 +15,7 @@ struct MetricChip: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.secondary.opacity(0.95))
+                .foregroundStyle(.secondary)
 
             Text(value)
                 .font(.headline.weight(.semibold))
@@ -35,7 +35,7 @@ struct GlassPill: View {
     var body: some View {
         Label(text, systemImage: systemImage)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary.opacity(0.95))
+            .foregroundStyle(.secondary)
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -52,7 +52,7 @@ struct GlassNotice: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.primary.opacity(0.9))
+                .foregroundStyle(.primary)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -61,7 +61,7 @@ struct GlassNotice: View {
 
                 Text(message)
                     .font(.footnote)
-                    .foregroundStyle(.secondary.opacity(0.95))
+                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
@@ -71,4 +71,3 @@ struct GlassNotice: View {
         .glassEffect(in: .rect(cornerRadius: 16))
     }
 }
-
