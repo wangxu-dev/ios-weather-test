@@ -9,7 +9,8 @@ import SwiftUI
 
 struct WeatherScreen: View {
     @StateObject private var viewModel: WeatherViewModel
-    @FocusState private var cityFieldIsFocused: Bool
+    @State private var resignSearchToken = UUID()
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         weatherProvider: any WeatherProviding,
@@ -27,16 +28,8 @@ struct WeatherScreen: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.05, green: 0.05, blue: 0.12),
-                    Color(red: 0.18, green: 0.06, blue: 0.48),
-                    Color(red: 0.26, green: 0.79, blue: 0.68),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            background
+                .ignoresSafeArea()
 
             GlassEffectContainer {
                 ScrollView {
@@ -56,40 +49,65 @@ struct WeatherScreen: View {
                         .padding(.top, 10)
                         .padding(.bottom, 8)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    footer
-                        .padding(.bottom, 10)
-                }
+                // Footer removed for now.
+                // .safeAreaInset(edge: .bottom, spacing: 0) {
+                //     footer
+                //         .padding(.bottom, 10)
+                // }
             }
         }
         .onTapGesture {
-            cityFieldIsFocused = false
+            resignSearchToken = UUID()
+            viewModel.setSearchFocused(false)
         }
-        .onChange(of: cityFieldIsFocused) { _, newValue in
-            viewModel.setSearchFocused(newValue)
+    }
+
+    private var background: some View {
+        // Keep the vibe consistent, but adapt contrast for Light/Dark.
+        LinearGradient(
+            colors: backgroundColors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var backgroundColors: [Color] {
+        switch colorScheme {
+        case .light:
+            // Softer, brighter tones so the system search field and text feel native in Light mode.
+            return [
+                Color(red: 0.92, green: 0.96, blue: 1.00),
+                Color(red: 0.92, green: 0.93, blue: 1.00),
+                Color(red: 0.86, green: 0.98, blue: 0.94),
+            ]
+        case .dark:
+            return [
+                Color(red: 0.05, green: 0.05, blue: 0.12),
+                Color(red: 0.18, green: 0.06, blue: 0.48),
+                Color(red: 0.26, green: 0.79, blue: 0.68),
+            ]
+        @unknown default:
+            return [
+                Color(red: 0.05, green: 0.05, blue: 0.12),
+                Color(red: 0.18, green: 0.06, blue: 0.48),
+                Color(red: 0.26, green: 0.79, blue: 0.68),
+            ]
         }
     }
 
     private var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-
-            TextField("输入城市名", text: $viewModel.city)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .submitLabel(.search)
-                .focused($cityFieldIsFocused)
-                .onSubmit {
-                    cityFieldIsFocused = false
-                    viewModel.fetchWeather()
-                }
-        }
-        .font(.subheadline.weight(.semibold))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .glassEffect(in: .rect(cornerRadius: 18))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 8)
+        SystemSearchField(
+            placeholder: "输入城市名",
+            text: $viewModel.city,
+            resignToken: resignSearchToken,
+            onFocusChanged: { isFocused in
+                viewModel.setSearchFocused(isFocused)
+            },
+            onSubmit: {
+                viewModel.fetchWeather()
+            }
+        )
+        .frame(height: 44)
     }
 
     private var topSearchArea: some View {
@@ -109,14 +127,16 @@ struct WeatherScreen: View {
 
     private var suggestionsPanel: some View {
         CityListPanel(cities: viewModel.citySuggestions) { name in
-            cityFieldIsFocused = false
+            resignSearchToken = UUID()
+            viewModel.setSearchFocused(false)
             viewModel.selectSuggestion(name)
         }
     }
 
     private var recentPanel: some View {
         CityListPanel(title: "最近", cities: viewModel.recentCities) { name in
-            cityFieldIsFocused = false
+            resignSearchToken = UUID()
+            viewModel.setSearchFocused(false)
             viewModel.selectRecentCity(name)
         }
     }

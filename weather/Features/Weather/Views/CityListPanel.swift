@@ -9,17 +9,20 @@ struct CityListPanel: View {
     let title: String?
     let cities: [String]
     let maxHeight: CGFloat
+    let scrollThreshold: Int
     let onSelect: (String) -> Void
 
     init(
         title: String? = nil,
         cities: [String],
         maxHeight: CGFloat = 260,
+        scrollThreshold: Int = 6,
         onSelect: @escaping (String) -> Void
     ) {
         self.title = title
         self.cities = cities
         self.maxHeight = maxHeight
+        self.scrollThreshold = scrollThreshold
         self.onSelect = onSelect
     }
 
@@ -34,33 +37,40 @@ struct CityListPanel: View {
                     .padding(.bottom, 6)
             }
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(cities, id: \.self) { name in
-                        Button {
-                            onSelect(name)
-                        } label: {
-                            HStack {
-                                Text(name)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if name != cities.last {
-                            Divider()
-                        }
-                    }
+            if cities.count > scrollThreshold {
+                ScrollView {
+                    rows
                 }
+                .scrollIndicators(.hidden)
+                .frame(maxHeight: maxHeight)
+            } else {
+                rows
             }
-            .scrollIndicators(.hidden)
         }
-        .frame(maxHeight: maxHeight)
         .glassEffect(in: .rect(cornerRadius: 16))
     }
-}
 
+    private var rows: some View {
+        VStack(spacing: 0) {
+            ForEach(cities, id: \.self) { name in
+                Button {
+                    onSelect(name)
+                } label: {
+                    HStack {
+                        Text(name)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if name != cities.last {
+                    Divider()
+                }
+            }
+        }
+    }
+}
