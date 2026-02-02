@@ -18,7 +18,6 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var cities: [String] = []
     @Published var selectedCity: String?
     @Published private(set) var weatherByCity: [String: WeatherState] = [:]
-    @Published var isAddingCity: Bool = false
 
     private let weatherProvider: any WeatherProviding
     private let cityStore: any CityListStoring
@@ -56,14 +55,6 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    func presentAddCity() {
-        isAddingCity = true
-    }
-
-    func dismissAddCity() {
-        isAddingCity = false
-    }
-
     func selectCity(_ city: String) {
         selectedCity = city
         Task { [cityStore] in
@@ -97,8 +88,6 @@ final class HomeViewModel: ObservableObject {
             await cityStore.saveCities(next)
             await cityStore.saveSelectedCity(trimmed)
         }
-
-        dismissAddCity()
         fetchWeather(for: trimmed)
     }
 

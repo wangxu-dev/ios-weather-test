@@ -13,6 +13,7 @@ struct SystemSearchField: UIViewRepresentable {
     final class Coordinator: NSObject, UITextFieldDelegate {
         private let parent: SystemSearchField
         var lastResignToken: UUID?
+        var lastFocusToken: UUID?
 
         init(parent: SystemSearchField) {
             self.parent = parent
@@ -40,6 +41,7 @@ struct SystemSearchField: UIViewRepresentable {
     let placeholder: String
     @Binding var text: String
     let resignToken: UUID
+    var focusToken: UUID? = nil
     var onFocusChanged: ((Bool) -> Void)?
     var onSubmit: (() -> Void)?
 
@@ -54,6 +56,8 @@ struct SystemSearchField: UIViewRepresentable {
         field.autocapitalizationType = .none
         field.returnKeyType = .search
         field.clearButtonMode = .whileEditing
+        field.backgroundColor = .clear
+        field.textColor = .label
         field.delegate = context.coordinator
         field.addTarget(context.coordinator, action: #selector(Coordinator.textDidChange(_:)), for: .editingChanged)
         return field
@@ -68,6 +72,14 @@ struct SystemSearchField: UIViewRepresentable {
         if context.coordinator.lastResignToken != resignToken {
             context.coordinator.lastResignToken = resignToken
             uiView.resignFirstResponder()
+        }
+
+        // When focusToken changes, focus the field (used when showing search UI).
+        if context.coordinator.lastFocusToken != focusToken {
+            context.coordinator.lastFocusToken = focusToken
+            if focusToken != nil, !uiView.isFirstResponder {
+                uiView.becomeFirstResponder()
+            }
         }
     }
 }

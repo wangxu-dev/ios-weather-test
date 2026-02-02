@@ -6,10 +6,16 @@
 import SwiftUI
 
 struct CityListPanel: View {
+    enum Style {
+        case plain
+        case glass
+    }
+
     let title: String?
     let cities: [String]
     let maxHeight: CGFloat
     let scrollThreshold: Int
+    let style: Style
     let onSelect: (String) -> Void
 
     init(
@@ -17,12 +23,14 @@ struct CityListPanel: View {
         cities: [String],
         maxHeight: CGFloat = 260,
         scrollThreshold: Int = 6,
+        style: Style = .glass,
         onSelect: @escaping (String) -> Void
     ) {
         self.title = title
         self.cities = cities
         self.maxHeight = maxHeight
         self.scrollThreshold = scrollThreshold
+        self.style = style
         self.onSelect = onSelect
     }
 
@@ -47,7 +55,7 @@ struct CityListPanel: View {
                 rows
             }
         }
-        .glassEffect(in: .rect(cornerRadius: 16))
+        .modifier(PanelBackground(style: style))
     }
 
     private var rows: some View {
@@ -71,6 +79,21 @@ struct CityListPanel: View {
                     Divider()
                 }
             }
+        }
+    }
+}
+
+private struct PanelBackground: ViewModifier {
+    let style: CityListPanel.Style
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .glass:
+            content
+                .glassEffect(in: .rect(cornerRadius: 16))
+        case .plain:
+            content
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 }

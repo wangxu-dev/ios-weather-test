@@ -16,25 +16,25 @@ struct WeatherCardView: View {
 
             switch state {
             case .idle:
-                GlassNotice(systemImage: "cloud", title: city, message: "点击刷新获取天气。")
+                notice(systemImage: "cloud", title: city, message: "点击刷新获取天气。")
 
             case .loading:
-                GlassNotice(systemImage: "hourglass", title: city, message: "加载中…")
+                notice(systemImage: "hourglass", title: city, message: "加载中…")
 
             case .failed(let message):
-                GlassNotice(systemImage: "exclamationmark.triangle.fill", title: "请求失败", message: message)
+                notice(systemImage: "exclamationmark.triangle.fill", title: "请求失败", message: message)
 
             case .loaded(let payload):
                 if let info = payload.weatherInfo {
                     weatherBody(info)
                 } else {
-                    GlassNotice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
+                    notice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
                 }
 
                 if !payload.alarms.isEmpty {
                     Divider()
                     DisclosureGroup("预警") {
-                        VStack(spacing: 10) {
+                        VStack(spacing: 0) {
                             ForEach(payload.alarms) { alarm in
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(alarm.title)
@@ -44,10 +44,15 @@ struct WeatherCardView: View {
                                     Text(alarm.publishTime)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
+                                    Text(alarm.details)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 12)
-                                .glassEffect(in: .rect(cornerRadius: 16))
+                                .padding(.vertical, 10)
+
+                                if alarm.id != payload.alarms.last?.id {
+                                    Divider()
+                                }
                             }
                         }
                         .padding(.top, 6)
@@ -59,7 +64,7 @@ struct WeatherCardView: View {
         }
         .padding()
         .glassEffect(in: .rect(cornerRadius: 28))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 8)
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
     }
 
     private var header: some View {
@@ -107,16 +112,60 @@ struct WeatherCardView: View {
             }
 
             HStack(spacing: 10) {
-                GlassPill(systemImage: "wind", text: "\(info.windDirection) \(info.windScale)")
-                GlassPill(systemImage: "clock", text: info.updateTime)
+                Label("\(info.windDirection) \(info.windScale)", systemImage: "wind")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Label(info.updateTime, systemImage: "clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             HStack(spacing: 10) {
-                MetricChip(title: "最低", value: "\(info.tempLow)°")
-                MetricChip(title: "最高", value: "\(info.tempHigh)°")
+                metricChip(title: "最低", value: "\(info.tempLow)°")
+                metricChip(title: "最高", value: "\(info.tempHigh)°")
                 Spacer(minLength: 0)
             }
         }
+    }
+
+    private func notice(systemImage: String, title: String, message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.primary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func metricChip(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func symbolName(for weatherText: String) -> String {
@@ -129,4 +178,3 @@ struct WeatherCardView: View {
         return "cloud.sun.fill"
     }
 }
-
