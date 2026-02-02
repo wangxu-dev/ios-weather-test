@@ -13,7 +13,8 @@ struct ContentView: View {
     var body: some View {
         WeatherScreen(
             weatherProvider: weatherProvider,
-            citySuggester: WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
+            citySuggester: WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared),
+            recentCitiesStore: UserDefaultsRecentCitiesStore.shared
         )
     }
 }
@@ -21,5 +22,4 @@ struct ContentView: View {
 #Preview {
     ContentView(weatherProvider: MockWeatherProvider())
 }
-
 

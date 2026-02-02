@@ -11,8 +11,18 @@ struct WeatherScreen: View {
     @StateObject private var viewModel: WeatherViewModel
     @FocusState private var cityFieldIsFocused: Bool
 
-    init(weatherProvider: any WeatherProviding, citySuggester: any CitySuggesting) {
-        _viewModel = StateObject(wrappedValue: WeatherViewModel(weatherProvider: weatherProvider, citySuggester: citySuggester))
+    init(
+        weatherProvider: any WeatherProviding,
+        citySuggester: any CitySuggesting,
+        recentCitiesStore: any RecentCitiesStoring
+    ) {
+        _viewModel = StateObject(
+            wrappedValue: WeatherViewModel(
+                weatherProvider: weatherProvider,
+                citySuggester: citySuggester,
+                recentCitiesStore: recentCitiesStore
+            )
+        )
     }
 
     var body: some View {
@@ -29,41 +39,34 @@ struct WeatherScreen: View {
             .ignoresSafeArea()
 
             GlassEffectContainer {
-                ZStack {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            if shouldShowContentCard {
-                                contentCard
-                            }
+                ScrollView {
+                    VStack(spacing: 20) {
+                        if viewModel.shouldShowContent {
+                            contentCard
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal)
-                        .padding(.top, 88)
-                        .padding(.bottom, 84)
                     }
-                    .scrollDismissesKeyboard(.interactively)
-
-                    VStack(spacing: 0) {
-                        VStack(spacing: 8) {
-                            searchBar
-
-                            if cityFieldIsFocused && !viewModel.citySuggestions.isEmpty {
-                                suggestionsPanel
-                            }
-                        }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    topSearchArea
                         .padding(.horizontal)
                         .padding(.top, 10)
-
-                        Spacer(minLength: 0)
-
-                        footer
-                            .padding(.bottom, 10)
-                    }
+                        .padding(.bottom, 8)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    footer
+                        .padding(.bottom, 10)
                 }
             }
         }
         .onTapGesture {
             cityFieldIsFocused = false
+        }
+        .onChange(of: cityFieldIsFocused) { _, newValue in
+            viewModel.setSearchFocused(newValue)
         }
     }
 
@@ -86,42 +89,35 @@ struct WeatherScreen: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .glassEffect(in: .rect(cornerRadius: 18))
-        .shadow(color: .black.opacity(0.20), radius: 14, y: 10)
+        .shadow(color: .black.opacity(0.14), radius: 12, y: 8)
+    }
+
+    private var topSearchArea: some View {
+        VStack(spacing: 8) {
+            searchBar
+            
+            switch viewModel.overlayKind {
+            case .none:
+                EmptyView()
+            case .suggestions:
+                suggestionsPanel
+            case .history:
+                recentPanel
+            }
+        }
     }
 
     private var suggestionsPanel: some View {
-        VStack(spacing: 0) {
-            ForEach(viewModel.citySuggestions, id: \.self) { name in
-                Button {
-                    cityFieldIsFocused = false
-                    viewModel.selectSuggestion(name)
-                } label: {
-                    HStack {
-                        Text(name)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                if name != viewModel.citySuggestions.last {
-                    Divider()
-                }
-            }
+        CityListPanel(cities: viewModel.citySuggestions) { name in
+            cityFieldIsFocused = false
+            viewModel.selectSuggestion(name)
         }
-        .glassEffect(in: .rect(cornerRadius: 16))
     }
 
-    // Keep the home screen clean: only show the card when we have something meaningful to show.
-    private var shouldShowContentCard: Bool {
-        switch viewModel.state {
-        case .idle:
-            return false
-        case .loading, .loaded, .failed:
-            return true
+    private var recentPanel: some View {
+        CityListPanel(title: "最近", cities: viewModel.recentCities) { name in
+            cityFieldIsFocused = false
+            viewModel.selectRecentCity(name)
         }
     }
 
@@ -132,7 +128,7 @@ struct WeatherScreen: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(in: .rect(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.2), radius: 15, y: 10)
+        .shadow(color: .black.opacity(0.14), radius: 12, y: 8)
     }
 
     @ViewBuilder
@@ -273,6 +269,7 @@ struct WeatherScreen: View {
 #Preview {
     WeatherScreen(
         weatherProvider: MockWeatherProvider(),
-        citySuggester: WeatherComCnCitySuggester()
+        citySuggester: WeatherComCnCitySuggester(),
+        recentCitiesStore: UserDefaultsRecentCitiesStore()
     )
 }
