@@ -9,7 +9,8 @@ import SwiftUI
 
 @main
 struct WeatherApp: App {
-    private let weatherProvider = WeatherComCnClient()
+    private let cityListCache = InMemoryCityListCache.shared
+    private var weatherProvider: WeatherComCnClient { WeatherComCnClient(cityListCache: cityListCache) }
 
     var body: some Scene {
         WindowGroup {

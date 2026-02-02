@@ -13,12 +13,6 @@ import Foundation
 /// 1) Fetch city list JSONP, find cityId by exact name match
 /// 2) Fetch weather page and parse embedded JSON fragments
 final class WeatherComCnClient: WeatherProviding {
-    private struct CityInfo: Decodable {
-        let n: String
-        let x: String
-        let y: String
-    }
-
     private struct WeatherInfoEnvelope: Decodable {
         let weatherinfo: WeatherInfoDTO
     }
@@ -47,9 +41,11 @@ final class WeatherComCnClient: WeatherProviding {
     }
 
     private let session: URLSession
+    private let cityListCache: CityListCaching
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, cityListCache: CityListCaching = InMemoryCityListCache.shared) {
         self.session = session
+        self.cityListCache = cityListCache
     }
 
     func weather(for city: String) async throws -> WeatherPayload {
@@ -66,6 +62,13 @@ final class WeatherComCnClient: WeatherProviding {
     }
 
     private func fetchCityId(cityName: String) async throws -> String? {
+        if let cachedCities = await cityListCache.getCachedCityList() {
+            if let cityId = cachedCities.first(where: { $0.value.n == cityName })?.key {
+                return cityId
+            }
+            return nil
+        }
+
         // Example: https://i.tq121.com.cn/j/webgis_v2/city.json?_=TIMESTAMP
         var components = URLComponents(string: "https://i.tq121.com.cn/j/webgis_v2/city.json")!
         components.queryItems = [
@@ -88,7 +91,8 @@ final class WeatherComCnClient: WeatherProviding {
             throw WeatherAPIError(message: "城市列表内容不是 UTF-8。")
         }
 
-        let cities = try JSONDecoder().decode([String: CityInfo].self, from: jsonData)
+        let cities = try JSONDecoder().decode([String: WeatherComCnCityInfo].self, from: jsonData)
+        await cityListCache.setCachedCityList(cities)
         for (cityId, info) in cities where info.n == cityName {
             return cityId
         }

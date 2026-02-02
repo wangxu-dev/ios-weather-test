@@ -11,8 +11,8 @@ struct WeatherScreen: View {
     @StateObject private var viewModel: WeatherViewModel
     @FocusState private var cityFieldIsFocused: Bool
 
-    init(weatherProvider: any WeatherProviding) {
-        _viewModel = StateObject(wrappedValue: WeatherViewModel(weatherProvider: weatherProvider))
+    init(weatherProvider: any WeatherProviding, citySuggester: any CitySuggesting) {
+        _viewModel = StateObject(wrappedValue: WeatherViewModel(weatherProvider: weatherProvider, citySuggester: citySuggester))
     }
 
     var body: some View {
@@ -44,9 +44,15 @@ struct WeatherScreen: View {
                     .scrollDismissesKeyboard(.interactively)
 
                     VStack(spacing: 0) {
-                        searchBar
-                            .padding(.horizontal)
-                            .padding(.top, 10)
+                        VStack(spacing: 8) {
+                            searchBar
+
+                            if cityFieldIsFocused && !viewModel.citySuggestions.isEmpty {
+                                suggestionsPanel
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 10)
 
                         Spacer(minLength: 0)
 
@@ -81,6 +87,32 @@ struct WeatherScreen: View {
         .padding(.vertical, 12)
         .glassEffect(in: .rect(cornerRadius: 18))
         .shadow(color: .black.opacity(0.20), radius: 14, y: 10)
+    }
+
+    private var suggestionsPanel: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.citySuggestions, id: \.self) { name in
+                Button {
+                    cityFieldIsFocused = false
+                    viewModel.selectSuggestion(name)
+                } label: {
+                    HStack {
+                        Text(name)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if name != viewModel.citySuggestions.last {
+                    Divider()
+                }
+            }
+        }
+        .glassEffect(in: .rect(cornerRadius: 16))
     }
 
     // Keep the home screen clean: only show the card when we have something meaningful to show.
@@ -239,5 +271,8 @@ struct WeatherScreen: View {
 }
 
 #Preview {
-    WeatherScreen(weatherProvider: MockWeatherProvider())
+    WeatherScreen(
+        weatherProvider: MockWeatherProvider(),
+        citySuggester: WeatherComCnCitySuggester()
+    )
 }

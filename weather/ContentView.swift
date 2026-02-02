@@ -11,11 +11,15 @@ struct ContentView: View {
     let weatherProvider: any WeatherProviding
 
     var body: some View {
-        WeatherScreen(weatherProvider: weatherProvider)
+        WeatherScreen(
+            weatherProvider: weatherProvider,
+            citySuggester: WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
+        )
     }
 }
 
 #Preview {
     ContentView(weatherProvider: MockWeatherProvider())
 }
+
 
