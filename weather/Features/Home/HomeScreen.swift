@@ -157,6 +157,7 @@ struct HomeScreen: View {
         let showNoResults =
             !trimmed.isEmpty
             && !searchModel.isSearching
+            && !searchModel.isDebouncing
             && searchModel.suggestions.isEmpty
             && searchModel.lastCompletedQuery == trimmed
 
@@ -170,7 +171,7 @@ struct HomeScreen: View {
                             cities: viewModel.cities,
                             maxHeight: 280,
                             scrollThreshold: 7,
-                            style: .glass
+                            style: .none
                         ) { name in
                             resignSearchToken = UUID()
                             viewModel.selectCity(name)
@@ -193,7 +194,7 @@ struct HomeScreen: View {
                         cities: searchModel.suggestions,
                         maxHeight: 360,
                         scrollThreshold: 8,
-                        style: .glass
+                        style: .none
                     ) { name in
                         resignSearchToken = UUID()
                         if viewModel.cities.contains(name) {
@@ -242,7 +243,7 @@ struct HomeScreen: View {
             return .suggestions
         }
 
-        if searchModel.isSearching {
+        if searchModel.isDebouncing || searchModel.isSearching {
             return .searching
         }
 

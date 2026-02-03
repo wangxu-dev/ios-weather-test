@@ -7,6 +7,7 @@ import SwiftUI
 
 struct CityListPanel: View {
     enum Style {
+        case none
         case plain
         case glass
     }
@@ -48,95 +49,50 @@ struct CityListPanel: View {
                     .padding(.bottom, 6)
             }
 
-            rows
-        }
-        // When we use `List` (swipe-to-delete), we should avoid wrapping it in a "card".
-        // Keeping it unwrapped makes it feel more native and prevents heavy visual separation.
-        .modifier(PanelBackground(style: style, enabled: onDelete == nil))
-    }
-
-    private var rows: some View {
-        Group {
-            if onDelete != nil {
-                swipeListRows
-            } else if cities.count > scrollThreshold {
-                ScrollView {
-                    plainRows
-                }
-                .scrollIndicators(.hidden)
-                .frame(maxHeight: maxHeight)
-            } else {
-                plainRows
-            }
-        }
-    }
-
-    private var plainRows: some View {
-        VStack(spacing: 0) {
-            ForEach(cities, id: \.self) { name in
-                Button {
-                    onSelect(name)
-                } label: {
-                    HStack {
-                        Text(name)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                if name != cities.last {
-                    Divider()
-                }
-            }
-        }
-    }
-
-    private var swipeListRows: some View {
-        // Use List so we can get native swipe-to-delete behavior, with smooth animations
-        // and proper scroll interaction.
-        List {
-            ForEach(cities, id: \.self) { name in
-                Button {
-                    onSelect(name)
-                } label: {
-                    HStack {
-                        Text(name)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
-                .listRowBackground(Color.clear)
-                .listRowSeparatorTint(Color(uiColor: .separator).opacity(0.35))
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        onDelete?(name)
+            // Use `List` for both suggestions and added-cities so they feel consistent,
+            // scroll smoothly, and support native swipe actions when enabled.
+            List {
+                ForEach(cities, id: \.self) { name in
+                    Button {
+                        onSelect(name)
                     } label: {
-                        Label("删除", systemImage: "trash")
+                        HStack {
+                            Text(name)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparatorTint(Color(uiColor: .separator).opacity(0.35))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if let onDelete {
+                            Button(role: .destructive) {
+                                onDelete(name)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .frame(maxHeight: maxHeight)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(maxHeight: maxHeight)
+        .modifier(PanelBackground(style: style))
     }
 }
 
 private struct PanelBackground: ViewModifier {
     let style: CityListPanel.Style
-    let enabled: Bool
 
     func body(content: Content) -> some View {
-        guard enabled else { return AnyView(content) }
-
         switch style {
+        case .none:
+            return AnyView(content)
         case .glass:
             return AnyView(
                 content
