@@ -141,8 +141,8 @@ final class HomeViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 self?.refreshingCities.remove(city)
                 self?.weatherByCity[city] = .loaded(payload)
-                Task { [weatherCacheStore] in
-                    await weatherCacheStore.save(city: city, payload: payload)
+                Task { [weatherCacheStore = self?.weatherCacheStore] in
+                    await weatherCacheStore?.save(city: city, payload: payload)
                 }
             } catch {
                 if Task.isCancelled { return }
