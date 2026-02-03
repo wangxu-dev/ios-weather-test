@@ -13,6 +13,7 @@ struct HomeScreen: View {
     @State private var isSearching: Bool = false
     @State private var resignSearchToken = UUID()
     @State private var focusSearchToken: UUID? = nil
+    @State private var pageScrollMinY: [String: CGFloat] = [:]
 
     init(weatherProvider: any WeatherProviding, cityStore: any CityListStoring) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(weatherProvider: weatherProvider, cityStore: cityStore))
@@ -29,32 +30,17 @@ struct HomeScreen: View {
                 .ignoresSafeArea()
 
             GlassEffectContainer {
-                VStack(spacing: 0) {
+                ZStack(alignment: .top) {
+                    content
+
                     topBar
                         .padding(.horizontal)
-                        .padding(.top, 6)
-                        .padding(.bottom, 6)
-
-                    if isSearching {
-                        searchScene
-                            .padding(.horizontal)
-                            .transition(.asymmetric(
-                                insertion: .opacity,
-                                removal: .opacity
-                            ))
-                    } else {
-                        if viewModel.cities.isEmpty {
-                            emptyHint
-                                .padding(.horizontal)
-                                .padding(.top, 16)
-                                .transition(.opacity)
-                        } else {
-                            cityPager
-                                .transition(.opacity.combined(with: .scale(scale: 0.99, anchor: .top)))
-                        }
-                    }
-
-                    Spacer(minLength: 0)
+                        .padding(.top, 4)
+                        .padding(.bottom, 4)
+                        // glassEffect may render in a separate layer; compositingGroup ensures opacity applies to the whole bar.
+                        .compositingGroup()
+                        .opacity(topBarOpacity)
+                        .allowsHitTesting(topBarOpacity > 0.01)
                 }
             }
         }
@@ -66,6 +52,32 @@ struct HomeScreen: View {
             guard newValue == .active else { return }
             guard !isSearching else { return }
             viewModel.refreshSelectedCity()
+        }
+        .onPreferenceChange(PageScrollMinYPreferenceKey.self) { dict in
+            pageScrollMinY.merge(dict) { _, new in new }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        VStack(spacing: 0) {
+            if isSearching {
+                searchScene
+                    .padding(.horizontal)
+                    .padding(.top, topBarTotalHeight)
+                    .transition(.opacity)
+            } else if viewModel.cities.isEmpty {
+                emptyHint
+                    .padding(.horizontal)
+                    .padding(.top, topBarTotalHeight + 8)
+                    .transition(.opacity)
+            } else {
+                cityPager
+                    .padding(.top, 0)
+                    .transition(.opacity.combined(with: .scale(scale: 0.99, anchor: .top)))
+            }
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -183,6 +195,12 @@ struct HomeScreen: View {
         )) {
             ForEach(viewModel.cities, id: \.self) { city in
                 ScrollView {
+                    PageScrollMinYReporter(city: city, coordinateSpaceName: "HomeScroll-\(city)")
+                    // Space for the overlayed top bar. This scrolls away as you scroll up,
+                    // so content can reach the top without being covered by an always-on header.
+                    Color.clear
+                        .frame(height: topBarTotalHeight)
+
                     WeatherCardView(
                         city: city,
                         state: viewModel.weatherByCity[city] ?? .idle,
@@ -190,8 +208,9 @@ struct HomeScreen: View {
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
-                    .padding(.top, 6)
+                    .padding(.top, 2)
                 }
+                .coordinateSpace(name: "HomeScroll-\(city)")
                 .scrollIndicators(.hidden)
                 .tag(city)
             }
@@ -234,6 +253,32 @@ struct HomeScreen: View {
         exitSearch()
     }
 
+    private var currentCity: String {
+        viewModel.selectedCity ?? viewModel.cities.first ?? ""
+    }
+
+    private var topBarFadeProgress: CGFloat {
+        // Only fade while not searching, and only when there's content to scroll.
+        guard !isSearching else { return 0 }
+        guard !viewModel.cities.isEmpty else { return 0 }
+
+        // `minY` starts near 0 and becomes negative as you scroll up.
+        let minY = pageScrollMinY[currentCity] ?? 0
+        let threshold: CGFloat = 44
+        let delta = max(0, -minY)
+        return min(1, delta / threshold)
+    }
+
+    private var topBarOpacity: CGFloat {
+        // Fade out completely while scrolling up.
+        max(0, 1 - topBarFadeProgress)
+    }
+
+    private var topBarTotalHeight: CGFloat {
+        // 44 content height + 4 top + 4 bottom.
+        52
+    }
+
     private var background: some View {
         LinearGradient(
             colors: backgroundColors,
@@ -274,6 +319,30 @@ struct HomeScreen: View {
         @unknown default:
             return Color.black.opacity(0.14)
         }
+    }
+}
+
+private struct PageScrollMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private struct PageScrollMinYReporter: View {
+    let city: String
+    let coordinateSpaceName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(
+                    key: PageScrollMinYPreferenceKey.self,
+                    value: [city: proxy.frame(in: .named(coordinateSpaceName)).minY]
+                )
+        }
+        .frame(height: 0)
     }
 }
 
