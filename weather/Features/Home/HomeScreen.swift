@@ -108,6 +108,9 @@ struct HomeScreen: View {
             }
         }
         .foregroundStyle(.primary)
+        // Keep header and search scene switching in sync even if state changes
+        // happen without an explicit withAnimation call.
+        .animation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10), value: isSearching)
     }
 
     private var addButton: some View {
@@ -150,9 +153,12 @@ struct HomeScreen: View {
     private var searchScene: some View {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        Group {
-            if trimmed.isEmpty {
-                if !viewModel.cities.isEmpty {
+        let mode = searchSceneMode(trimmedQuery: trimmed)
+
+        ZStack(alignment: .top) {
+            switch mode {
+            case .addedCities:
+                VStack(alignment: .leading, spacing: 10) {
                     CityListPanel(
                         title: nil,
                         cities: viewModel.cities,
@@ -163,35 +169,80 @@ struct HomeScreen: View {
                         resignSearchToken = UUID()
                         viewModel.selectCity(name)
                         exitSearch()
+                    } onDelete: { name in
+                        viewModel.removeCity(name)
                     }
-                    .padding(.top, 6)
-                } else {
-                    EmptyView()
+
+                    TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
+                        .padding(.horizontal, 4)
                 }
-            } else {
-                if !searchModel.suggestions.isEmpty {
-                    CityListPanel(
-                        title: nil,
-                        cities: searchModel.suggestions,
-                        maxHeight: 360,
-                        scrollThreshold: 8,
-                        style: .glass
-                    ) { name in
-                        resignSearchToken = UUID()
-                        if viewModel.cities.contains(name) {
-                            viewModel.selectCity(name)
-                        } else {
-                            viewModel.addCity(name)
-                        }
-                        exitSearch()
+                .padding(.top, 6)
+                .transition(.opacity)
+
+            case .suggestions:
+                CityListPanel(
+                    title: nil,
+                    cities: searchModel.suggestions,
+                    maxHeight: 360,
+                    scrollThreshold: 8,
+                    style: .glass
+                ) { name in
+                    resignSearchToken = UUID()
+                    if viewModel.cities.contains(name) {
+                        viewModel.selectCity(name)
+                    } else {
+                        viewModel.addCity(name)
                     }
-                    .padding(.top, 6)
-                } else {
-                    EmptyView()
+                    exitSearch()
                 }
+                .padding(.top, 6)
+                .transition(.opacity)
+
+            case .searching:
+                Text("搜索中…")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 10)
+                    .transition(.opacity)
+
+            case .noResults:
+                Text("无匹配城市")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 10)
+                    .transition(.opacity)
+
+            case .empty:
+                EmptyView()
             }
         }
-        .transaction { $0.animation = nil } // Don't animate list changes as query updates.
+        .animation(.easeInOut(duration: 0.12), value: mode)
+    }
+
+    private enum SearchSceneMode: Hashable {
+        case empty
+        case addedCities
+        case searching
+        case suggestions
+        case noResults
+    }
+
+    private func searchSceneMode(trimmedQuery: String) -> SearchSceneMode {
+        if trimmedQuery.isEmpty {
+            return viewModel.cities.isEmpty ? .empty : .addedCities
+        }
+
+        if !searchModel.suggestions.isEmpty {
+            return .suggestions
+        }
+
+        if searchModel.isSearching {
+            return .searching
+        }
+
+        return .noResults
     }
 
     private var cityPager: some View {
@@ -250,13 +301,33 @@ struct HomeScreen: View {
     private func submitCurrentQuery() {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        resignSearchToken = UUID()
+
+        // Only allow adding/selecting cities that are known to the data source.
+        // 1) If user already added it, just select.
         if viewModel.cities.contains(trimmed) {
+            resignSearchToken = UUID()
             viewModel.selectCity(trimmed)
-        } else {
-            viewModel.addCity(trimmed)
+            exitSearch()
+            return
         }
-        exitSearch()
+
+        // 2) If there is an exact match in current suggestions, accept it.
+        if let exact = searchModel.suggestions.first(where: { $0 == trimmed }) {
+            resignSearchToken = UUID()
+            viewModel.addCity(exact)
+            exitSearch()
+            return
+        }
+
+        // 3) If there is exactly one suggestion, accept it.
+        if searchModel.suggestions.count == 1, let only = searchModel.suggestions.first {
+            resignSearchToken = UUID()
+            viewModel.addCity(only)
+            exitSearch()
+            return
+        }
+
+        // Otherwise, require the user to tap one of the suggestions.
     }
 
     private var currentCity: String {

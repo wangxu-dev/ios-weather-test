@@ -10,6 +10,7 @@ import Combine
 final class CitySearchViewModel: ObservableObject {
     @Published var query: String = ""
     @Published private(set) var suggestions: [String] = []
+    @Published private(set) var isSearching: Bool = false
 
     private let citySuggester: any CitySuggesting
     private var cancellables: Set<AnyCancellable> = []
@@ -30,6 +31,7 @@ final class CitySearchViewModel: ObservableObject {
     func clear() {
         query = ""
         suggestions = []
+        isSearching = false
         task?.cancel()
         task = nil
     }
@@ -40,19 +42,22 @@ final class CitySearchViewModel: ObservableObject {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             suggestions = []
+            isSearching = false
             return
         }
 
+        isSearching = true
         task = Task { [weak self] in
             do {
                 let list = try await self?.citySuggester.suggestions(matching: trimmed, limit: 20) ?? []
                 if Task.isCancelled { return }
                 self?.suggestions = list
+                self?.isSearching = false
             } catch {
                 if Task.isCancelled { return }
                 self?.suggestions = []
+                self?.isSearching = false
             }
         }
     }
 }
-

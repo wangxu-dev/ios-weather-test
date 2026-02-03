@@ -96,6 +96,30 @@ final class HomeViewModel: ObservableObject {
         fetchWeather(for: trimmed)
     }
 
+    func removeCity(_ city: String) {
+        let trimmed = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard cities.contains(trimmed) else { return }
+
+        tasks[trimmed]?.cancel()
+        tasks[trimmed] = nil
+        refreshingCities.remove(trimmed)
+        weatherByCity.removeValue(forKey: trimmed)
+
+        let next = cities.filter { $0 != trimmed }
+        cities = next
+
+        if selectedCity == trimmed {
+            selectedCity = next.first
+        }
+
+        Task { [cityStore, weatherCacheStore, next, selectedCity] in
+            await cityStore.saveCities(next)
+            await cityStore.saveSelectedCity(selectedCity)
+            await weatherCacheStore.remove(city: trimmed)
+        }
+    }
+
     func refreshAllCities() {
         for city in cities {
             fetchWeather(for: city)

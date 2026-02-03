@@ -17,6 +17,7 @@ struct CityListPanel: View {
     let scrollThreshold: Int
     let style: Style
     let onSelect: (String) -> Void
+    let onDelete: ((String) -> Void)?
 
     init(
         title: String? = nil,
@@ -24,7 +25,8 @@ struct CityListPanel: View {
         maxHeight: CGFloat = 260,
         scrollThreshold: Int = 6,
         style: Style = .glass,
-        onSelect: @escaping (String) -> Void
+        onSelect: @escaping (String) -> Void,
+        onDelete: ((String) -> Void)? = nil
     ) {
         self.title = title
         self.cities = cities
@@ -32,6 +34,7 @@ struct CityListPanel: View {
         self.scrollThreshold = scrollThreshold
         self.style = style
         self.onSelect = onSelect
+        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -61,24 +64,41 @@ struct CityListPanel: View {
     private var rows: some View {
         VStack(spacing: 0) {
             ForEach(cities, id: \.self) { name in
-                Button {
-                    onSelect(name)
-                } label: {
-                    HStack {
-                        Text(name)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                rowButton(name: name)
 
                 if name != cities.last {
                     Divider()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func rowButton(name: String) -> some View {
+        let button = Button {
+            onSelect(name)
+        } label: {
+            HStack {
+                Text(name)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+
+        if let onDelete {
+            button.contextMenu {
+                Button(role: .destructive) {
+                    onDelete(name)
+                } label: {
+                    Label("从首页移除", systemImage: "trash")
+                }
+            }
+        } else {
+            button
         }
     }
 }
