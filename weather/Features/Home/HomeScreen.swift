@@ -8,6 +8,7 @@ import SwiftUI
 struct HomeScreen: View {
     @StateObject private var viewModel: HomeViewModel
     @StateObject private var searchModel: CitySearchViewModel
+    @StateObject private var recommendationModel: CityRecommendationViewModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var isSearching: Bool = false
@@ -23,11 +24,16 @@ struct HomeScreen: View {
                 weatherCacheStore: UserDefaultsWeatherCacheStore.shared
             )
         )
-        _searchModel = StateObject(
-            wrappedValue: CitySearchViewModel(
-                citySuggester: WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
-            )
+
+        let citySuggester = WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
+        _searchModel = StateObject(wrappedValue: CitySearchViewModel(citySuggester: citySuggester))
+
+        let ipLocator = IPInfoBaiduCityLocator(
+            ipProvider: IPInfoClient(),
+            locationProvider: BaiduIPLocationClient()
         )
+        let matcher = DefaultCityAutoMatcher(locator: ipLocator, suggester: citySuggester)
+        _recommendationModel = StateObject(wrappedValue: CityRecommendationViewModel(matcher: matcher))
     }
 
     var body: some View {
@@ -149,6 +155,11 @@ struct HomeScreen: View {
         .accessibilityLabel("关闭搜索")
     }
 
+    private var locationRecommendation: HomeSearchList.LocationRecommendation? {
+        guard let city = recommendationModel.recommendedCity else { return nil }
+        return HomeSearchList.LocationRecommendation(city: city)
+    }
+
     @ViewBuilder
     private var searchScene: some View {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -166,21 +177,26 @@ struct HomeScreen: View {
                 switch mode {
                 case .addedCities:
                     VStack(alignment: .leading, spacing: 10) {
-                        CityListPanel(
-                            title: nil,
+                        HomeSearchList(
+                            recommendation: locationRecommendation,
                             cities: viewModel.cities,
                             maxHeight: 280,
-                            scrollThreshold: 7,
-                            style: .none
-                        ) { name in
-                            resignSearchToken = UUID()
-                            viewModel.selectCity(name)
-                            exitSearch()
-                        } onDelete: { name in
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
-                                viewModel.removeCity(name)
+                            enableDelete: true,
+                            onSelect: { name in
+                                resignSearchToken = UUID()
+                                if viewModel.cities.contains(name) {
+                                    viewModel.selectCity(name)
+                                } else {
+                                    viewModel.addCity(name)
+                                }
+                                exitSearch()
+                            },
+                            onDelete: { name in
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
+                                    viewModel.removeCity(name)
+                                }
                             }
-                        }
+                        )
 
                         TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
                             .padding(.horizontal, 4)
@@ -189,21 +205,21 @@ struct HomeScreen: View {
                     .transition(.opacity)
 
                 case .suggestions:
-                    CityListPanel(
-                        title: nil,
+                    HomeSearchList(
+                        recommendation: locationRecommendation,
                         cities: searchModel.suggestions,
                         maxHeight: 360,
-                        scrollThreshold: 8,
-                        style: .none
-                    ) { name in
-                        resignSearchToken = UUID()
-                        if viewModel.cities.contains(name) {
-                            viewModel.selectCity(name)
-                        } else {
-                            viewModel.addCity(name)
+                        enableDelete: false,
+                        onSelect: { name in
+                            resignSearchToken = UUID()
+                            if viewModel.cities.contains(name) {
+                                viewModel.selectCity(name)
+                            } else {
+                                viewModel.addCity(name)
+                            }
+                            exitSearch()
                         }
-                        exitSearch()
-                    }
+                    )
                     .padding(.top, 6)
                     .transition(.opacity)
 
@@ -236,6 +252,11 @@ struct HomeScreen: View {
 
     private func searchSceneMode(trimmedQuery: String) -> SearchSceneMode {
         if trimmedQuery.isEmpty {
+            // If we have a location-based recommendation, show it as the first row even when the
+            // user hasn't typed anything yet.
+            if recommendationModel.recommendedCity != nil {
+                return .addedCities
+            }
             return viewModel.cities.isEmpty ? .empty : .addedCities
         }
 
@@ -298,6 +319,7 @@ struct HomeScreen: View {
             isSearching = true
         }
         focusSearchToken = UUID()
+        recommendationModel.refreshIfNeeded()
     }
 
     private func exitSearch() {
