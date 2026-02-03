@@ -115,10 +115,10 @@ struct HomeScreen: View {
             enterSearch()
         } label: {
             CircleIcon(symbolName: "plus")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
+        .buttonStyle(PressableIconButtonStyle())
         .accessibilityLabel("添加城市")
     }
 
@@ -139,10 +139,10 @@ struct HomeScreen: View {
             exitSearch()
         } label: {
             CircleIcon(symbolName: "xmark")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
+        .buttonStyle(PressableIconButtonStyle())
         .accessibilityLabel("关闭搜索")
     }
 
@@ -361,6 +361,15 @@ private struct CircleIcon: View {
             .symbolRenderingMode(.hierarchical)
             .frame(width: 36, height: 36, alignment: .center)
             .glassEffect(in: .circle)
+    }
+}
+
+private struct PressableIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.24, dampingFraction: 0.78, blendDuration: 0.06), value: configuration.isPressed)
     }
 }
 
