@@ -22,12 +22,18 @@ final class HomeViewModel: ObservableObject {
 
     private let weatherProvider: any WeatherProviding
     private let cityStore: any CityListStoring
+    private let weatherCacheStore: any WeatherCacheStoring
     private var tasks: [String: Task<Void, Never>] = [:]
     private var loadTask: Task<Void, Never>?
 
-    init(weatherProvider: any WeatherProviding, cityStore: any CityListStoring) {
+    init(
+        weatherProvider: any WeatherProviding,
+        cityStore: any CityListStoring,
+        weatherCacheStore: any WeatherCacheStoring
+    ) {
         self.weatherProvider = weatherProvider
         self.cityStore = cityStore
+        self.weatherCacheStore = weatherCacheStore
 
         loadTask = Task { [weak self] in
             await self?.loadFromDisk()
@@ -37,6 +43,7 @@ final class HomeViewModel: ObservableObject {
     func loadFromDisk() async {
         let savedCities = await cityStore.loadCities()
         let savedSelected = await cityStore.loadSelectedCity()
+        let cached = await weatherCacheStore.loadCache()
 
         cities = savedCities
         selectedCity = savedSelected ?? savedCities.first
@@ -46,14 +53,16 @@ final class HomeViewModel: ObservableObject {
             self.selectedCity = cities.first
         }
 
-        // Prime weather state map.
-        for city in cities where weatherByCity[city] == nil {
-            weatherByCity[city] = .idle
+        // Prime weather state map from cache so we can render immediately.
+        for city in cities {
+            if let payload = cached[city] {
+                weatherByCity[city] = .loaded(payload)
+            } else if weatherByCity[city] == nil {
+                weatherByCity[city] = .idle
+            }
         }
 
-        if let selected = selectedCity {
-            fetchWeather(for: selected)
-        }
+        refreshAllCities()
     }
 
     func selectCity(_ city: String) {
@@ -87,21 +96,18 @@ final class HomeViewModel: ObservableObject {
         fetchWeather(for: trimmed)
     }
 
+    func refreshAllCities() {
+        for city in cities {
+            fetchWeather(for: city)
+        }
+    }
+
     func fetchWeather(for city: String) {
         tasks[city]?.cancel()
         let previous = weatherByCity[city]
-        let hadLoaded: Bool
-        switch previous {
-        case .loaded:
-            hadLoaded = true
-        default:
-            hadLoaded = false
-        }
-
-        if hadLoaded {
-            refreshingCities.insert(city)
-        } else {
-            weatherByCity[city] = .loading
+        refreshingCities.insert(city)
+        if previous == nil {
+            weatherByCity[city] = .idle
         }
 
         tasks[city] = Task { [weak self] in
@@ -111,6 +117,9 @@ final class HomeViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 self?.refreshingCities.remove(city)
                 self?.weatherByCity[city] = .loaded(payload)
+                Task { [weatherCacheStore] in
+                    await weatherCacheStore.save(city: city, payload: payload)
+                }
             } catch {
                 if Task.isCancelled { return }
                 self?.refreshingCities.remove(city)

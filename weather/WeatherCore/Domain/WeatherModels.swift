@@ -7,12 +7,12 @@
 
 import Foundation
 
-struct WeatherPayload: Decodable {
+struct WeatherPayload: Codable {
     let weatherInfo: WeatherInfo?
     let alarms: [WeatherAlarm]
 }
 
-struct WeatherInfo: Decodable {
+struct WeatherInfo: Codable {
     let city: String
     let updateTime: String
     let tempHigh: String
@@ -22,7 +22,7 @@ struct WeatherInfo: Decodable {
     let windScale: String
 }
 
-struct WeatherAlarm: Decodable, Identifiable {
+struct WeatherAlarm: Codable, Identifiable {
     var id: String { "\(publishTime)|\(title)" }
 
     let title: String

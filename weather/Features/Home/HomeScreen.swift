@@ -16,7 +16,13 @@ struct HomeScreen: View {
     @State private var pageScrollMinY: [String: CGFloat] = [:]
 
     init(weatherProvider: any WeatherProviding, cityStore: any CityListStoring) {
-        _viewModel = StateObject(wrappedValue: HomeViewModel(weatherProvider: weatherProvider, cityStore: cityStore))
+        _viewModel = StateObject(
+            wrappedValue: HomeViewModel(
+                weatherProvider: weatherProvider,
+                cityStore: cityStore,
+                weatherCacheStore: UserDefaultsWeatherCacheStore.shared
+            )
+        )
         _searchModel = StateObject(
             wrappedValue: CitySearchViewModel(
                 citySuggester: WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
@@ -51,7 +57,7 @@ struct HomeScreen: View {
         .onChange(of: scenePhase) { _, newValue in
             guard newValue == .active else { return }
             guard !isSearching else { return }
-            viewModel.refreshSelectedCity()
+            viewModel.refreshAllCities()
         }
         .onPreferenceChange(PageScrollMinYPreferenceKey.self) { dict in
             pageScrollMinY.merge(dict) { _, new in new }

@@ -12,22 +12,10 @@ struct WeatherCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            header
             bodyContent
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
-    }
-
-    private var header: some View {
-        HStack {
-            Spacer(minLength: 0)
-
-            if isRefreshing || isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
     }
 
     private var isLoading: Bool {
