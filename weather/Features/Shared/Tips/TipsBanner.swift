@@ -11,41 +11,35 @@ import SwiftUI
 struct TipsBanner: View {
     let tips: [String]
 
-    @State private var selected: String? = nil
+    @State private var selected: String?
 
     init(tips: [String]) {
-        self.tips = tips
+        let cleaned = tips
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        self.tips = cleaned
+        _selected = State(initialValue: cleaned.randomElement())
     }
 
     var body: some View {
-        if let selected {
-            Text(selected)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentTransition(.opacity)
-                .animation(.easeInOut(duration: 0.12), value: selected)
-                .accessibilityLabel(selected)
-                .task(id: tipsKey) {
-                    // Pick once per "tips set" change.
-                    if self.selected == nil {
-                        self.selected = tips.randomElement()
-                    }
+        Text(selected ?? "")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(selected == nil ? 0 : 1)
+            .contentTransition(.opacity)
+            .animation(.easeInOut(duration: 0.12), value: selected)
+            .accessibilityLabel(selected ?? "")
+            .task(id: tipsKey) {
+                // Only re-pick when the source tips list changes (or the current selection is invalid).
+                if let selected, tips.contains(selected) {
+                    return
                 }
-        } else {
-            // Still run selection even if the first render has no selected tip.
-            Color.clear
-                .frame(height: 0)
-                .task(id: tipsKey) {
-                    self.selected = tips.randomElement()
-                }
-        }
+                selected = tips.randomElement()
+            }
     }
 
     private var tipsKey: String {
         tips.joined(separator: "||")
     }
 }
-

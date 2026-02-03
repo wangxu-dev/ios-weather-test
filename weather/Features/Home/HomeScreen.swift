@@ -154,71 +154,75 @@ struct HomeScreen: View {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let mode = searchSceneMode(trimmedQuery: trimmed)
+        let showNoResults =
+            !trimmed.isEmpty
+            && !searchModel.isSearching
+            && searchModel.suggestions.isEmpty
+            && searchModel.lastCompletedQuery == trimmed
 
-        ZStack(alignment: .top) {
-            switch mode {
-            case .addedCities:
-                VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .top) {
+                switch mode {
+                case .addedCities:
+                    VStack(alignment: .leading, spacing: 10) {
+                        CityListPanel(
+                            title: nil,
+                            cities: viewModel.cities,
+                            maxHeight: 280,
+                            scrollThreshold: 7,
+                            style: .glass
+                        ) { name in
+                            resignSearchToken = UUID()
+                            viewModel.selectCity(name)
+                            exitSearch()
+                        } onDelete: { name in
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
+                                viewModel.removeCity(name)
+                            }
+                        }
+
+                        TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
+                            .padding(.horizontal, 4)
+                    }
+                    .padding(.top, 6)
+                    .transition(.opacity)
+
+                case .suggestions:
                     CityListPanel(
                         title: nil,
-                        cities: viewModel.cities,
-                        maxHeight: 280,
-                        scrollThreshold: 7,
+                        cities: searchModel.suggestions,
+                        maxHeight: 360,
+                        scrollThreshold: 8,
                         style: .glass
                     ) { name in
                         resignSearchToken = UUID()
-                        viewModel.selectCity(name)
+                        if viewModel.cities.contains(name) {
+                            viewModel.selectCity(name)
+                        } else {
+                            viewModel.addCity(name)
+                        }
                         exitSearch()
-                    } onDelete: { name in
-                        viewModel.removeCity(name)
                     }
-
-                    TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
-                        .padding(.horizontal, 4)
-                }
-                .padding(.top, 6)
-                .transition(.opacity)
-
-            case .suggestions:
-                CityListPanel(
-                    title: nil,
-                    cities: searchModel.suggestions,
-                    maxHeight: 360,
-                    scrollThreshold: 8,
-                    style: .glass
-                ) { name in
-                    resignSearchToken = UUID()
-                    if viewModel.cities.contains(name) {
-                        viewModel.selectCity(name)
-                    } else {
-                        viewModel.addCity(name)
-                    }
-                    exitSearch()
-                }
-                .padding(.top, 6)
-                .transition(.opacity)
-
-            case .searching:
-                Text("搜索中…")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 10)
+                    .padding(.top, 6)
                     .transition(.opacity)
 
-            case .noResults:
-                Text("无匹配城市")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 10)
-                    .transition(.opacity)
-
-            case .empty:
-                EmptyView()
+                case .searching, .noResults, .empty:
+                    EmptyView()
+                }
             }
+            .animation(.easeInOut(duration: 0.12), value: mode)
+
+            // Only show "no results" after a completed search for the current query.
+            // We intentionally do not show a "searching..." hint to avoid any perceived flicker
+            // during fast, debounced searches.
+            Text("无匹配城市")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(showNoResults ? 1 : 0)
+                .contentTransition(.opacity)
+                .animation(.easeInOut(duration: 0.12), value: showNoResults)
         }
-        .animation(.easeInOut(duration: 0.12), value: mode)
     }
 
     private enum SearchSceneMode: Hashable {
@@ -242,7 +246,13 @@ struct HomeScreen: View {
             return .searching
         }
 
-        return .noResults
+        // Only show "no results" if the search has completed for the current query.
+        // This avoids flashing "no results" while the user is still typing (debounced search not started yet).
+        if searchModel.lastCompletedQuery == trimmedQuery {
+            return .noResults
+        }
+
+        return .searching
     }
 
     private var cityPager: some View {
@@ -301,6 +311,9 @@ struct HomeScreen: View {
     private func submitCurrentQuery() {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        // Prevent selecting from stale suggestions while a new query is still searching.
+        guard !searchModel.isSearching else { return }
 
         // Only allow adding/selecting cities that are known to the data source.
         // 1) If user already added it, just select.

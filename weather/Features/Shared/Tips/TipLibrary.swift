@@ -21,11 +21,15 @@ struct TipLibrary {
 
     private let items: [TipItem] = [
         TipItem(
-            text: "Tips：长按城市可从首页移除",
+            text: "Tips：左滑可从首页移除城市",
             contexts: [.searchAddedCities]
         ),
         TipItem(
             text: "Tips：左右滑动可切换城市",
+            contexts: [.home]
+        ),
+        TipItem(
+            text: "Tips：下拉/重新进入前台会静默刷新天气",
             contexts: [.home]
         ),
     ]
