@@ -9,6 +9,7 @@ struct HomeScreen: View {
     @StateObject private var viewModel: HomeViewModel
     @StateObject private var searchModel: CitySearchViewModel
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isSearching: Bool = false
     @State private var resignSearchToken = UUID()
     @State private var focusSearchToken: UUID? = nil
@@ -31,8 +32,8 @@ struct HomeScreen: View {
                 VStack(spacing: 0) {
                     topBar
                         .padding(.horizontal)
-                        .padding(.top, 12)
-                        .padding(.bottom, 10)
+                        .padding(.top, 6)
+                        .padding(.bottom, 6)
 
                     if isSearching {
                         searchScene
@@ -61,6 +62,11 @@ struct HomeScreen: View {
             guard isSearching else { return }
             resignSearchToken = UUID()
         }
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else { return }
+            guard !isSearching else { return }
+            viewModel.refreshSelectedCity()
+        }
     }
 
     private var topBar: some View {
@@ -70,10 +76,10 @@ struct HomeScreen: View {
                     .frame(maxWidth: .infinity)
                     .transition(.opacity)
 
-                cancelButton
+                closeButton
                     .transition(.opacity)
             } else {
-                Text("天气")
+                Text(viewModel.selectedCity ?? "天气")
                     .font(.title3.weight(.semibold))
                     .transition(.opacity)
 
@@ -90,13 +96,11 @@ struct HomeScreen: View {
         Button {
             enterSearch()
         } label: {
-            Image(systemName: "plus")
-                .font(.headline)
-                .symbolRenderingMode(.hierarchical)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            CircleIcon(symbolName: "plus")
         }
         .buttonStyle(.borderless)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
         .accessibilityLabel("添加城市")
     }
 
@@ -112,13 +116,16 @@ struct HomeScreen: View {
         .frame(height: 44)
     }
 
-    private var cancelButton: some View {
-        Button("取消") {
+    private var closeButton: some View {
+        Button {
             exitSearch()
+        } label: {
+            CircleIcon(symbolName: "xmark")
         }
         .buttonStyle(.borderless)
-        .font(.headline.weight(.semibold))
-        .contentTransition(.opacity)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel("关闭搜索")
     }
 
     @ViewBuilder
@@ -175,17 +182,18 @@ struct HomeScreen: View {
             set: { viewModel.selectCity($0) }
         )) {
             ForEach(viewModel.cities, id: \.self) { city in
-                WeatherCardView(
-                    city: city,
-                    state: viewModel.weatherByCity[city] ?? .idle,
-                    onRefresh: {
-                        viewModel.fetchWeather(for: city)
-                    }
-                )
+                ScrollView {
+                    WeatherCardView(
+                        city: city,
+                        state: viewModel.weatherByCity[city] ?? .idle,
+                        isRefreshing: viewModel.refreshingCities.contains(city)
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.top, 6)
+                }
+                .scrollIndicators(.hidden)
                 .tag(city)
-                .padding(.horizontal)
-                .padding(.top, 6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -266,6 +274,18 @@ struct HomeScreen: View {
         @unknown default:
             return Color.black.opacity(0.14)
         }
+    }
+}
+
+private struct CircleIcon: View {
+    let symbolName: String
+
+    var body: some View {
+        Image(systemName: symbolName)
+            .font(.system(size: 16, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .frame(width: 36, height: 36, alignment: .center)
+            .glassEffect(in: .circle)
     }
 }
 

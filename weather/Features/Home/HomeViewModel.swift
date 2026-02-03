@@ -18,6 +18,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var cities: [String] = []
     @Published var selectedCity: String?
     @Published private(set) var weatherByCity: [String: WeatherState] = [:]
+    @Published private(set) var refreshingCities: Set<String> = []
 
     private let weatherProvider: any WeatherProviding
     private let cityStore: any CityListStoring
@@ -61,13 +62,8 @@ final class HomeViewModel: ObservableObject {
             await cityStore.saveSelectedCity(city)
         }
 
-        // Fetch if needed.
-        switch weatherByCity[city] ?? .idle {
-        case .idle, .failed:
-            fetchWeather(for: city)
-        case .loading, .loaded:
-            break
-        }
+        // Always refresh when switching cities (hot update behavior).
+        fetchWeather(for: city)
     }
 
     func addCity(_ city: String) {
@@ -93,18 +89,45 @@ final class HomeViewModel: ObservableObject {
 
     func fetchWeather(for city: String) {
         tasks[city]?.cancel()
-        weatherByCity[city] = .loading
+        let previous = weatherByCity[city]
+        let hadLoaded: Bool
+        switch previous {
+        case .loaded:
+            hadLoaded = true
+        default:
+            hadLoaded = false
+        }
+
+        if hadLoaded {
+            refreshingCities.insert(city)
+        } else {
+            weatherByCity[city] = .loading
+        }
 
         tasks[city] = Task { [weak self] in
             do {
                 let payload = try await self?.weatherProvider.weather(for: city)
                 guard let payload else { return }
                 if Task.isCancelled { return }
+                self?.refreshingCities.remove(city)
                 self?.weatherByCity[city] = .loaded(payload)
             } catch {
                 if Task.isCancelled { return }
-                self?.weatherByCity[city] = .failed(error.localizedDescription)
+                self?.refreshingCities.remove(city)
+
+                // If we were refreshing an already-loaded city, keep the previous data to avoid UI flashing.
+                switch previous {
+                case .loaded:
+                    break
+                default:
+                    self?.weatherByCity[city] = .failed(error.localizedDescription)
+                }
             }
         }
+    }
+
+    func refreshSelectedCity() {
+        guard let selectedCity else { return }
+        fetchWeather(for: selectedCity)
     }
 }

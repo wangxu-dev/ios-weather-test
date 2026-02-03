@@ -8,7 +8,7 @@ import SwiftUI
 struct WeatherCardView: View {
     let city: String
     let state: HomeViewModel.WeatherState
-    let onRefresh: () -> Void
+    let isRefreshing: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -21,19 +21,21 @@ struct WeatherCardView: View {
 
     private var header: some View {
         HStack {
-            Text(city)
-                .font(.title3.weight(.semibold))
-
             Spacer(minLength: 0)
 
-            Button {
-                onRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.headline)
+            if isRefreshing || isLoading {
+                ProgressView()
+                    .controlSize(.small)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("刷新")
+        }
+    }
+
+    private var isLoading: Bool {
+        switch state {
+        case .loading:
+            return true
+        case .idle, .failed, .loaded:
+            return false
         }
     }
 
@@ -41,7 +43,7 @@ struct WeatherCardView: View {
     private var bodyContent: some View {
         switch state {
         case .idle:
-            notice(systemImage: "cloud", title: "未加载", message: "点击右上角刷新获取天气。")
+            notice(systemImage: "cloud", title: "准备就绪", message: "进入前台后会自动更新天气。")
 
         case .loading:
             notice(systemImage: "hourglass", title: "加载中…", message: "正在获取天气数据。")
@@ -119,13 +121,6 @@ struct WeatherCardView: View {
 
             HStack(spacing: 12) {
                 Label("\(info.windDirection) \(info.windScale)", systemImage: "wind")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                Label(info.updateTime, systemImage: "clock")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
