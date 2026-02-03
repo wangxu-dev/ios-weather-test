@@ -93,7 +93,14 @@ private struct PanelBackground: ViewModifier {
                 .glassEffect(in: .rect(cornerRadius: 16))
         case .plain:
             content
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemBackground).opacity(0.82))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color(uiColor: .separator).opacity(0.28), lineWidth: 0.5)
+                )
         }
     }
 }

@@ -13,58 +13,10 @@ struct WeatherCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-
-            switch state {
-            case .idle:
-                notice(systemImage: "cloud", title: city, message: "点击刷新获取天气。")
-
-            case .loading:
-                notice(systemImage: "hourglass", title: city, message: "加载中…")
-
-            case .failed(let message):
-                notice(systemImage: "exclamationmark.triangle.fill", title: "请求失败", message: message)
-
-            case .loaded(let payload):
-                if let info = payload.weatherInfo {
-                    weatherBody(info)
-                } else {
-                    notice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
-                }
-
-                if !payload.alarms.isEmpty {
-                    Divider()
-                    DisclosureGroup("预警") {
-                        VStack(spacing: 0) {
-                            ForEach(payload.alarms) { alarm in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(alarm.title)
-                                        .fontWeight(.semibold)
-                                    Text(alarm.type)
-                                        .foregroundStyle(.secondary)
-                                    Text(alarm.publishTime)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                    Text(alarm.details)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 10)
-
-                                if alarm.id != payload.alarms.last?.id {
-                                    Divider()
-                                }
-                            }
-                        }
-                        .padding(.top, 6)
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
+            bodyContent
         }
-        .padding()
-        .glassEffect(in: .rect(cornerRadius: 28))
-        .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
     }
 
     private var header: some View {
@@ -85,8 +37,60 @@ struct WeatherCardView: View {
         }
     }
 
+    @ViewBuilder
+    private var bodyContent: some View {
+        switch state {
+        case .idle:
+            notice(systemImage: "cloud", title: "未加载", message: "点击右上角刷新获取天气。")
+
+        case .loading:
+            notice(systemImage: "hourglass", title: "加载中…", message: "正在获取天气数据。")
+
+        case .failed(let message):
+            notice(systemImage: "exclamationmark.triangle.fill", title: "请求失败", message: message)
+
+        case .loaded(let payload):
+            if let info = payload.weatherInfo {
+                weatherBody(info)
+            } else {
+                notice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
+            }
+
+            if !payload.alarms.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("预警")
+                        .font(.headline)
+
+                    ForEach(payload.alarms) { alarm in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(alarm.title)
+                                .fontWeight(.semibold)
+
+                            Text(alarm.type)
+                                .foregroundStyle(.secondary)
+
+                            Text(alarm.publishTime)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            Text(alarm.details)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 6)
+
+                        if alarm.id != payload.alarms.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func weatherBody(_ info: WeatherInfo) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: symbolName(for: info.weather))
                     .font(.system(size: 48, weight: .semibold))
@@ -111,11 +115,15 @@ struct WeatherCardView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 10) {
+            Divider()
+
+            HStack(spacing: 12) {
                 Label("\(info.windDirection) \(info.windScale)", systemImage: "wind")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                Spacer(minLength: 0)
 
                 Label(info.updateTime, systemImage: "clock")
                     .font(.caption.weight(.semibold))
@@ -123,10 +131,11 @@ struct WeatherCardView: View {
                     .lineLimit(1)
             }
 
-            HStack(spacing: 10) {
-                metricChip(title: "最低", value: "\(info.tempLow)°")
-                metricChip(title: "最高", value: "\(info.tempHigh)°")
-                Spacer(minLength: 0)
+            Divider()
+
+            HStack(spacing: 16) {
+                metricPair(title: "最低", value: "\(info.tempLow)°")
+                metricPair(title: "最高", value: "\(info.tempHigh)°")
             }
         }
     }
@@ -152,7 +161,7 @@ struct WeatherCardView: View {
         .padding(.vertical, 6)
     }
 
-    private func metricChip(title: String, value: String) -> some View {
+    private func metricPair(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2)
@@ -163,9 +172,6 @@ struct WeatherCardView: View {
                 .monospacedDigit()
                 .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func symbolName(for weatherText: String) -> String {

@@ -12,7 +12,6 @@ struct HomeScreen: View {
     @State private var isSearching: Bool = false
     @State private var resignSearchToken = UUID()
     @State private var focusSearchToken: UUID? = nil
-    @Namespace private var searchMorphNamespace
 
     init(weatherProvider: any WeatherProviding, cityStore: any CityListStoring) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(weatherProvider: weatherProvider, cityStore: cityStore))
@@ -39,7 +38,7 @@ struct HomeScreen: View {
                         searchScene
                             .padding(.horizontal)
                             .transition(.asymmetric(
-                                insertion: .move(edge: .top).combined(with: .opacity),
+                                insertion: .opacity,
                                 removal: .opacity
                             ))
                     } else {
@@ -62,7 +61,6 @@ struct HomeScreen: View {
             guard isSearching else { return }
             resignSearchToken = UUID()
         }
-        .animation(.spring(response: 0.46, dampingFraction: 0.88, blendDuration: 0.12), value: isSearching)
     }
 
     private var topBar: some View {
@@ -70,20 +68,19 @@ struct HomeScreen: View {
             if isSearching {
                 searchField
                     .frame(maxWidth: .infinity)
-                    .transition(.identity)
+                    .transition(.opacity)
+
+                cancelButton
+                    .transition(.opacity)
             } else {
                 Text("天气")
                     .font(.title3.weight(.semibold))
+                    .transition(.opacity)
 
                 Spacer(minLength: 0)
 
                 addButton
-                    .transition(.identity)
-            }
-
-            if isSearching {
-                cancelButton
-                    .transition(.opacity)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
         .foregroundStyle(.primary)
@@ -96,15 +93,10 @@ struct HomeScreen: View {
             Image(systemName: "plus")
                 .font(.headline)
                 .symbolRenderingMode(.hierarchical)
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.thinMaterial)
-                .matchedGeometryEffect(id: "searchBackground", in: searchMorphNamespace)
-        )
+        .buttonStyle(.borderless)
         .accessibilityLabel("添加城市")
     }
 
@@ -117,20 +109,14 @@ struct HomeScreen: View {
             onFocusChanged: { _ in },
             onSubmit: { submitCurrentQuery() }
         )
-        .frame(height: 40)
-        .padding(.horizontal, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.thinMaterial)
-                .matchedGeometryEffect(id: "searchBackground", in: searchMorphNamespace)
-        )
+        .frame(height: 44)
     }
 
     private var cancelButton: some View {
         Button("取消") {
             exitSearch()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .font(.headline.weight(.semibold))
         .contentTransition(.opacity)
     }
@@ -139,19 +125,21 @@ struct HomeScreen: View {
     private var searchScene: some View {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        VStack(spacing: 12) {
+        Group {
             if trimmed.isEmpty {
                 if !viewModel.cities.isEmpty {
                     CityListPanel(
                         title: nil,
                         cities: viewModel.cities,
-                        maxHeight: 320,
-                        style: .plain
+                        maxHeight: 280,
+                        scrollThreshold: 7,
+                        style: .glass
                     ) { name in
                         resignSearchToken = UUID()
                         viewModel.selectCity(name)
                         exitSearch()
                     }
+                    .padding(.top, 6)
                 } else {
                     EmptyView()
                 }
@@ -160,8 +148,9 @@ struct HomeScreen: View {
                     CityListPanel(
                         title: nil,
                         cities: searchModel.suggestions,
-                        maxHeight: 420,
-                        style: .plain
+                        maxHeight: 360,
+                        scrollThreshold: 8,
+                        style: .glass
                     ) { name in
                         resignSearchToken = UUID()
                         if viewModel.cities.contains(name) {
@@ -171,12 +160,13 @@ struct HomeScreen: View {
                         }
                         exitSearch()
                     }
+                    .padding(.top, 6)
                 } else {
                     EmptyView()
                 }
             }
         }
-        .padding(.top, 6)
+        .transaction { $0.animation = nil } // Don't animate list changes as query updates.
     }
 
     private var cityPager: some View {
@@ -194,6 +184,8 @@ struct HomeScreen: View {
                 )
                 .tag(city)
                 .padding(.horizontal)
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -207,7 +199,9 @@ struct HomeScreen: View {
     }
 
     private func enterSearch() {
-        isSearching = true
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10)) {
+            isSearching = true
+        }
         focusSearchToken = UUID()
     }
 
@@ -215,7 +209,9 @@ struct HomeScreen: View {
         resignSearchToken = UUID()
         focusSearchToken = nil
         searchModel.clear()
-        isSearching = false
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10)) {
+            isSearching = false
+        }
     }
 
     private func submitCurrentQuery() {

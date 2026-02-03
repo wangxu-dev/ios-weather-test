@@ -56,8 +56,6 @@ struct SystemSearchField: UIViewRepresentable {
         field.autocapitalizationType = .none
         field.returnKeyType = .search
         field.clearButtonMode = .whileEditing
-        field.backgroundColor = .clear
-        field.textColor = .label
         field.delegate = context.coordinator
         field.addTarget(context.coordinator, action: #selector(Coordinator.textDidChange(_:)), for: .editingChanged)
         return field
