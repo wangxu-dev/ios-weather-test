@@ -37,7 +37,7 @@ struct AddCityScreen: View {
             background
                 .ignoresSafeArea()
 
-            GlassEffectContainer {
+            WeatherGlassEffectContainer {
                 VStack(spacing: 12) {
                     header
                         .padding(.horizontal)

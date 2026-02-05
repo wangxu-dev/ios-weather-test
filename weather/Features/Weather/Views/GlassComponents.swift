@@ -24,7 +24,7 @@ struct MetricChip: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .glassEffect(in: .rect(cornerRadius: 14))
+        .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -39,7 +39,7 @@ struct GlassPill: View {
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .glassEffect()
+            .weatherGlassEffect(in: Capsule())
     }
 }
 
@@ -68,6 +68,6 @@ struct GlassNotice: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
-        .glassEffect(in: .rect(cornerRadius: 16))
+        .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

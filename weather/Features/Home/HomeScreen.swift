@@ -37,7 +37,7 @@ struct HomeScreen: View {
             background
                 .ignoresSafeArea()
 
-            GlassEffectContainer {
+            WeatherGlassEffectContainer {
                 ZStack(alignment: .top) {
                     content
 
@@ -389,26 +389,20 @@ struct HomeScreen: View {
     }
 
     private var backgroundColors: [Color] {
-        switch colorScheme {
-        case .light:
-            return [
-                Color(red: 0.92, green: 0.96, blue: 1.00),
-                Color(red: 0.92, green: 0.93, blue: 1.00),
-                Color(red: 0.86, green: 0.98, blue: 0.94),
-            ]
-        case .dark:
-            return [
-                Color(red: 0.05, green: 0.05, blue: 0.12),
-                Color(red: 0.18, green: 0.06, blue: 0.48),
-                Color(red: 0.26, green: 0.79, blue: 0.68),
-            ]
-        @unknown default:
-            return [
-                Color(red: 0.05, green: 0.05, blue: 0.12),
-                Color(red: 0.18, green: 0.06, blue: 0.48),
-                Color(red: 0.26, green: 0.79, blue: 0.68),
-            ]
+        let selectedId = viewModel.selectedPlaceId ?? viewModel.places.first?.id
+        if
+            let selectedId,
+            case .loaded(let payload) = viewModel.weatherByPlaceId[selectedId],
+            let info = payload.weatherInfo
+        {
+            return WeatherTheme.backgroundColors(
+                weatherCode: info.weatherCode,
+                isDay: info.isDay,
+                colorScheme: colorScheme
+            )
         }
+
+        return WeatherTheme.backgroundColors(weatherCode: nil, isDay: nil, colorScheme: colorScheme)
     }
 
     private var shadowColor: Color {
@@ -484,7 +478,7 @@ private struct CircleIcon: View {
             .font(.system(size: 16, weight: .semibold))
             .symbolRenderingMode(.hierarchical)
             .frame(width: 36, height: 36, alignment: .center)
-            .glassEffect(in: .circle)
+            .weatherGlassEffect(in: Circle())
     }
 }
 
