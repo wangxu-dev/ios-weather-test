@@ -18,6 +18,10 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView(weatherProvider: MockWeatherProvider())
+#if DEBUG
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView(weatherProvider: MockWeatherProvider())
+    }
 }
+#endif

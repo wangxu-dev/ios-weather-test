@@ -45,37 +45,6 @@ struct WeatherCardView: View {
             } else {
                 notice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
             }
-
-            if !payload.alarms.isEmpty {
-                Divider()
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("预警")
-                        .font(.headline)
-
-                    ForEach(payload.alarms) { alarm in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(alarm.title)
-                                .fontWeight(.semibold)
-
-                            Text(alarm.type)
-                                .foregroundStyle(.secondary)
-
-                            Text(alarm.publishTime)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-
-                            Text(alarm.details)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 6)
-
-                        if alarm.id != payload.alarms.last?.id {
-                            Divider()
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -92,11 +61,11 @@ struct WeatherCardView: View {
                         .font(.headline)
                         .foregroundStyle(.secondary)
 
-                    Text("\(info.tempHigh)°")
+                    Text("\(info.tempCurrent ?? info.tempHigh)°")
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
 
-                    Text("最低 \(info.tempLow)°")
+                    Text("最低 \(info.tempLow)° / 最高 \(info.tempHigh)°")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()

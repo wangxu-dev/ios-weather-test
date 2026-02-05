@@ -2,50 +2,66 @@
 //  WeatherComCnClient.swift
 //  weather
 //
-//  Created by xu on 2026/1/25.
+//  NOTE: The app has been migrated to Open‑Meteo. The filename is kept to avoid
+//  touching the Xcode project file list.
 //
 
 import Foundation
 
-/// Swift port of the logic in `weather_api/main.go`, but calling the upstream endpoints directly.
+/// Open‑Meteo forecast client (geocoding + forecast).
 ///
 /// Flow:
-/// 1) Fetch city list JSONP, find cityId by exact name match
-/// 2) Fetch weather page and parse embedded JSON fragments
-final class WeatherComCnClient: WeatherProviding {
-    private struct WeatherInfoEnvelope: Decodable {
-        let weatherinfo: WeatherInfoDTO
+/// 1) Search place by name with Open‑Meteo Geocoding API
+/// 2) Fetch forecast by coordinates with Open‑Meteo Forecast API
+final class OpenMeteoClient: WeatherProviding {
+    private struct GeocodingEnvelope: Decodable {
+        let results: [GeocodingResult]?
     }
 
-    private struct WeatherInfoDTO: Decodable {
-        let cityname: String
-        let fctime: String
-        let temp: String
-        let tempn: String
-        let weather: String
-        let wd: String
-        let ws: String
+    private struct GeocodingResult: Decodable {
+        let name: String
+        let latitude: Double
+        let longitude: Double
+        let country: String?
+        let admin1: String?
     }
 
-    private struct AlarmEnvelope: Decodable {
-        let w: [AlarmDTO]?
+    private struct ForecastEnvelope: Decodable {
+        let timezone: String?
+        let current: Current?
+        let daily: Daily?
     }
 
-    private struct AlarmDTO: Decodable {
-        let w1: String?
-        let w5: String?
-        let w7: String?
-        let w8: String?
-        let w9: String?
-        let w13: String?
+    private struct Current: Decodable {
+        let time: String
+        let temperature2m: Double
+        let weatherCode: Int
+        let windSpeed10m: Double
+        let windDirection10m: Double
+
+        enum CodingKeys: String, CodingKey {
+            case time
+            case temperature2m = "temperature_2m"
+            case weatherCode = "weather_code"
+            case windSpeed10m = "wind_speed_10m"
+            case windDirection10m = "wind_direction_10m"
+        }
+    }
+
+    private struct Daily: Decodable {
+        let temperature2mMax: [Double]?
+        let temperature2mMin: [Double]?
+
+        enum CodingKeys: String, CodingKey {
+            case temperature2mMax = "temperature_2m_max"
+            case temperature2mMin = "temperature_2m_min"
+        }
     }
 
     private let session: URLSession
-    private let cityListCache: CityListCaching
 
-    init(session: URLSession = .shared, cityListCache: CityListCaching = InMemoryCityListCache.shared) {
+    init(session: URLSession = .shared) {
         self.session = session
-        self.cityListCache = cityListCache
     }
 
     func weather(for city: String) async throws -> WeatherPayload {
@@ -54,143 +70,166 @@ final class WeatherComCnClient: WeatherProviding {
             throw WeatherAPIError(message: "城市名不能为空。")
         }
 
-        guard let cityId = try await fetchCityId(cityName: trimmed) else {
-            throw WeatherAPIError(message: "城市 '\(trimmed)' 未找到。")
+        let place = try await geocode(cityName: trimmed)
+        let forecast = try await forecast(latitude: place.latitude, longitude: place.longitude)
+
+        guard let current = forecast.current else {
+            throw WeatherAPIError(message: "没有拿到 current 天气数据。")
         }
 
-        return try await fetchWeather(cityId: cityId)
+        let maxTemp = forecast.daily?.temperature2mMax?.first
+        let minTemp = forecast.daily?.temperature2mMin?.first
+
+        let info = WeatherInfo(
+            city: place.name,
+            updateTime: formatTime(current.time),
+            tempCurrent: formatTemp(current.temperature2m),
+            tempHigh: formatTemp(maxTemp ?? current.temperature2m),
+            tempLow: formatTemp(minTemp ?? current.temperature2m),
+            weather: weatherText(weatherCode: current.weatherCode),
+            windDirection: windDirectionText(degrees: current.windDirection10m),
+            windScale: windScaleText(speedMetersPerSecond: current.windSpeed10m)
+        )
+
+        return WeatherPayload(weatherInfo: info)
     }
 
-    private func fetchCityId(cityName: String) async throws -> String? {
-        if let cachedCities = await cityListCache.getCachedCityList() {
-            if let cityId = cachedCities.first(where: { $0.value.n == cityName })?.key {
-                return cityId
-            }
-            return nil
-        }
-
-        // Example: https://i.tq121.com.cn/j/webgis_v2/city.json?_=TIMESTAMP
-        var components = URLComponents(string: "https://i.tq121.com.cn/j/webgis_v2/city.json")!
+    private func geocode(cityName: String) async throws -> GeocodingResult {
+        var components = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
         components.queryItems = [
-            URLQueryItem(name: "_", value: String(Int(Date().timeIntervalSince1970 * 1000))),
+            URLQueryItem(name: "name", value: cityName),
+            URLQueryItem(name: "count", value: "1"),
+            URLQueryItem(name: "language", value: "zh"),
+            URLQueryItem(name: "format", value: "json"),
         ]
 
         var request = URLRequest(url: components.url!)
         request.timeoutInterval = 10
-        request.setValue("https://www.weather.com.cn/", forHTTPHeaderField: "Referer")
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw WeatherAPIError(message: "查询城市列表失败。")
+            throw WeatherAPIError(message: "地理编码失败。")
         }
 
-        let text = String(decoding: data, as: UTF8.self)
-        let jsonText = stripJSONP(prefix: "weacity(", suffix: ")", from: text)
-
-        guard let jsonData = jsonText.data(using: .utf8) else {
-            throw WeatherAPIError(message: "城市列表内容不是 UTF-8。")
+        let decoded = try JSONDecoder().decode(GeocodingEnvelope.self, from: data)
+        guard let place = decoded.results?.first else {
+            throw WeatherAPIError(message: "城市 '\(cityName)' 未找到。")
         }
-
-        let cities = try JSONDecoder().decode([String: WeatherComCnCityInfo].self, from: jsonData)
-        await cityListCache.setCachedCityList(cities)
-        for (cityId, info) in cities where info.n == cityName {
-            return cityId
-        }
-        return nil
+        return place
     }
 
-    private func fetchWeather(cityId: String) async throws -> WeatherPayload {
-        // Example: https://d1.weather.com.cn/dingzhi/101010100.html?_=TIMESTAMP
-        var components = URLComponents(string: "https://d1.weather.com.cn/dingzhi/\(cityId).html")!
+    private func forecast(latitude: Double, longitude: Double) async throws -> ForecastEnvelope {
+        var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
         components.queryItems = [
-            URLQueryItem(name: "_", value: String(Int(Date().timeIntervalSince1970 * 1000))),
+            URLQueryItem(name: "latitude", value: String(latitude)),
+            URLQueryItem(name: "longitude", value: String(longitude)),
+            URLQueryItem(name: "current", value: "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m"),
+            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
+            URLQueryItem(name: "timezone", value: "auto"),
         ]
 
         var request = URLRequest(url: components.url!)
         request.timeoutInterval = 10
-        request.setValue("https://www.weather.com.cn/", forHTTPHeaderField: "Referer")
-        request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-            forHTTPHeaderField: "User-Agent"
-        )
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw WeatherAPIError(message: "获取天气数据失败。")
         }
 
-        let text = String(decoding: data, as: UTF8.self)
-        let parts = text.split(separator: ";", omittingEmptySubsequences: true)
+        return try JSONDecoder().decode(ForecastEnvelope.self, from: data)
+    }
 
-        var weatherInfo: WeatherInfo?
-        var alarms: [WeatherAlarm] = []
+    private func formatTemp(_ value: Double) -> String {
+        String(Int(value.rounded()))
+    }
 
-        if let first = parts.first, first.contains("{") {
-            let json = substringFromFirstBrace(String(first))
-            if let jsonData = json.data(using: .utf8) {
-                let envelope = try JSONDecoder().decode(WeatherInfoEnvelope.self, from: jsonData)
-                weatherInfo = WeatherInfo(
-                    city: envelope.weatherinfo.cityname,
-                    updateTime: formatYYYYMMDDHHmm(envelope.weatherinfo.fctime),
-                    tempHigh: envelope.weatherinfo.temp,
-                    tempLow: envelope.weatherinfo.tempn,
-                    weather: envelope.weatherinfo.weather,
-                    windDirection: envelope.weatherinfo.wd,
-                    windScale: envelope.weatherinfo.ws
-                )
-            }
+    private func formatTime(_ value: String) -> String {
+        // Open‑Meteo commonly returns "YYYY-MM-DDTHH:mm". Normalize for UI.
+        value.replacingOccurrences(of: "T", with: " ")
+    }
+
+    private func weatherText(weatherCode: Int) -> String {
+        // WMO weather interpretation codes (simplified Chinese).
+        switch weatherCode {
+        case 0:
+            return "晴"
+        case 1:
+            return "基本晴朗"
+        case 2:
+            return "多云"
+        case 3:
+            return "阴"
+        case 45, 48:
+            return "雾"
+        case 51, 53, 55:
+            return "毛毛雨"
+        case 56, 57:
+            return "冻毛毛雨"
+        case 61, 63, 65:
+            return "雨"
+        case 66, 67:
+            return "冻雨"
+        case 71, 73, 75:
+            return "雪"
+        case 77:
+            return "雪粒"
+        case 80, 81, 82:
+            return "阵雨"
+        case 85, 86:
+            return "阵雪"
+        case 95:
+            return "雷暴"
+        case 96, 99:
+            return "强雷暴"
+        default:
+            return "未知"
         }
+    }
 
-        if parts.count > 1, parts[1].contains("{") {
-            let json = substringFromFirstBrace(String(parts[1]))
-            if let jsonData = json.data(using: .utf8) {
-                let envelope = try JSONDecoder().decode(AlarmEnvelope.self, from: jsonData)
-                let items = envelope.w ?? []
-                alarms = items.compactMap { dto in
-                    guard
-                        let title = dto.w13, !title.isEmpty,
-                        let typeA = dto.w5, !typeA.isEmpty,
-                        let typeB = dto.w7, !typeB.isEmpty,
-                        let publishTime = dto.w8, !publishTime.isEmpty,
-                        let details = dto.w9, !details.isEmpty
-                    else {
-                        return nil
-                    }
-                    return WeatherAlarm(
-                        title: title,
-                        type: "\(typeA) \(typeB)预警",
-                        publishTime: publishTime,
-                        details: details
-                    )
-                }
-            }
+    private func windDirectionText(degrees: Double) -> String {
+        // 16-wind compass, localized to Chinese.
+        let normalized = degrees.truncatingRemainder(dividingBy: 360)
+        let idx = Int((normalized / 22.5).rounded()) % 16
+        switch idx {
+        case 0: return "北风"
+        case 1: return "北东北风"
+        case 2: return "东北风"
+        case 3: return "东东北风"
+        case 4: return "东风"
+        case 5: return "东东南风"
+        case 6: return "东南风"
+        case 7: return "南东南风"
+        case 8: return "南风"
+        case 9: return "南西南风"
+        case 10: return "西南风"
+        case 11: return "西西南风"
+        case 12: return "西风"
+        case 13: return "西西北风"
+        case 14: return "西北风"
+        case 15: return "北西北风"
+        default: return "风"
         }
-
-        return WeatherPayload(weatherInfo: weatherInfo, alarms: alarms)
     }
 
-    private func stripJSONP(prefix: String, suffix: String, from text: String) -> String {
-        var result = text
-        if result.hasPrefix(prefix) { result.removeFirst(prefix.count) }
-        if result.hasSuffix(suffix) { result.removeLast(suffix.count) }
-        return result
-    }
-
-    private func substringFromFirstBrace(_ text: String) -> String {
-        guard let idx = text.firstIndex(of: "{") else { return text }
-        return String(text[idx...])
-    }
-
-    /// Input: "YYYYMMDDHHmm" (12 chars)
-    /// Output: "YYYY-MM-DD HH:mm:00"
-    private func formatYYYYMMDDHHmm(_ text: String) -> String {
-        guard text.count == 12 else { return text }
-        let chars = Array(text)
-        let yyyy = String(chars[0..<4])
-        let mm = String(chars[4..<6])
-        let dd = String(chars[6..<8])
-        let hh = String(chars[8..<10])
-        let mi = String(chars[10..<12])
-        return "\(yyyy)-\(mm)-\(dd) \(hh):\(mi):00"
+    private func windScaleText(speedMetersPerSecond: Double) -> String {
+        // Beaufort scale (roughly) based on m/s.
+        let v = max(0, speedMetersPerSecond)
+        let scale: Int
+        switch v {
+        case ..<0.3: scale = 0
+        case ..<1.6: scale = 1
+        case ..<3.4: scale = 2
+        case ..<5.5: scale = 3
+        case ..<8.0: scale = 4
+        case ..<10.8: scale = 5
+        case ..<13.9: scale = 6
+        case ..<17.2: scale = 7
+        case ..<20.8: scale = 8
+        case ..<24.5: scale = 9
+        case ..<28.5: scale = 10
+        case ..<32.7: scale = 11
+        default: scale = 12
+        }
+        return "\(scale)级"
     }
 }

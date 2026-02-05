@@ -160,13 +160,17 @@ struct AddCityScreen: View {
     }
 }
 
-#Preview {
-    AddCityScreen(
-        citySuggester: WeatherComCnCitySuggester(),
-        existingCities: ["北京", "上海"],
-        canClose: true,
-        onSelectCity: { _ in },
-        onAddCity: { _ in },
-        onClose: {}
-    )
+#if DEBUG
+struct AddCityScreen_Previews: PreviewProvider {
+    static var previews: some View {
+        AddCityScreen(
+            citySuggester: WeatherComCnCitySuggester(),
+            existingCities: ["北京", "上海"],
+            canClose: true,
+            onSelectCity: { _ in },
+            onAddCity: { _ in },
+            onClose: {}
+        )
+    }
 }
+#endif

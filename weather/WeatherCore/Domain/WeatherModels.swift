@@ -9,24 +9,16 @@ import Foundation
 
 struct WeatherPayload: Codable {
     let weatherInfo: WeatherInfo?
-    let alarms: [WeatherAlarm]
 }
 
 struct WeatherInfo: Codable {
     let city: String
     let updateTime: String
+    /// Current temperature.
+    let tempCurrent: String?
     let tempHigh: String
     let tempLow: String
     let weather: String
     let windDirection: String
     let windScale: String
-}
-
-struct WeatherAlarm: Codable, Identifiable {
-    var id: String { "\(publishTime)|\(title)" }
-
-    let title: String
-    let type: String
-    let publishTime: String
-    let details: String
 }

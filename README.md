@@ -15,7 +15,7 @@ This repository is a small **practice project** for learning **Swift / SwiftUI**
 - Maintain an “added cities” list
 - Swipe-to-delete for added cities
 - Basic caching so the app can render quickly on launch, then refresh silently
-- Optional “location recommendation” (IP-based) to suggest a city in the search list
+- (Planned) Location-based suggestion / auto-location
 
 ## Project Structure
 
@@ -47,4 +47,3 @@ This repository is a small **practice project** for learning **Swift / SwiftUI**
 ## License
 
 For personal learning and experimentation.
-

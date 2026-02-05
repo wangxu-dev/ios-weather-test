@@ -198,12 +198,12 @@ struct WeatherScreen: View {
                             .shadow(color: shadowColor.opacity(0.85), radius: 14, y: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(info.tempHigh)°")
+                            Text("\(info.tempCurrent ?? info.tempHigh)°")
                                 .font(.system(size: 44, weight: .bold, design: .rounded))
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
 
-                            Text("最低 \(info.tempLow)°")
+                            Text("最低 \(info.tempLow)° / 最高 \(info.tempHigh)°")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
@@ -228,40 +228,7 @@ struct WeatherScreen: View {
                     .foregroundStyle(.secondary)
             }
 
-            if !payload.alarms.isEmpty {
-                Divider()
-
-                DisclosureGroup {
-                    VStack(spacing: 10) {
-                        ForEach(payload.alarms) { alarm in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(alarm.title)
-                                    .fontWeight(.semibold)
-                                Text(alarm.type)
-                                    .foregroundStyle(.secondary)
-                                Text(alarm.publishTime)
-                                    .foregroundStyle(.secondary)
-                                    .font(.footnote)
-                                Text(alarm.details)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 12)
-                            .glassEffect(in: .rect(cornerRadius: 16))
-                        }
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .symbolRenderingMode(.hierarchical)
-                        Text("预警")
-                            .font(.headline)
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
+            EmptyView()
         }
     }
 
@@ -288,20 +255,24 @@ struct WeatherScreen: View {
     }
 
     private var footer: some View {
-        Text("数据来自 weather.com.cn，仅供参考。")
+        Text("数据来自 Open‑Meteo，仅供参考。")
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .glassEffect()
-            .accessibilityLabel("数据来源：weather.com.cn，仅供参考")
+            .accessibilityLabel("数据来源：Open‑Meteo，仅供参考")
     }
 }
 
-#Preview {
-    WeatherScreen(
-        weatherProvider: MockWeatherProvider(),
-        citySuggester: WeatherComCnCitySuggester(),
-        recentCitiesStore: UserDefaultsRecentCitiesStore()
-    )
+#if DEBUG
+struct WeatherScreen_Previews: PreviewProvider {
+    static var previews: some View {
+        WeatherScreen(
+            weatherProvider: MockWeatherProvider(),
+            citySuggester: WeatherComCnCitySuggester(),
+            recentCitiesStore: UserDefaultsRecentCitiesStore()
+        )
+    }
 }
+#endif

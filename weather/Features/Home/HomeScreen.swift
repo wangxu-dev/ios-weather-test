@@ -8,7 +8,6 @@ import SwiftUI
 struct HomeScreen: View {
     @StateObject private var viewModel: HomeViewModel
     @StateObject private var searchModel: CitySearchViewModel
-    @StateObject private var recommendationModel: CityRecommendationViewModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var isSearching: Bool = false
@@ -25,15 +24,8 @@ struct HomeScreen: View {
             )
         )
 
-        let citySuggester = WeatherComCnCitySuggester(cityListCache: InMemoryCityListCache.shared)
+        let citySuggester = WeatherComCnCitySuggester()
         _searchModel = StateObject(wrappedValue: CitySearchViewModel(citySuggester: citySuggester))
-
-        let ipLocator = IPInfoBaiduCityLocator(
-            ipProvider: IPInfoClient(),
-            locationProvider: BaiduIPLocationClient()
-        )
-        let matcher = DefaultCityAutoMatcher(locator: ipLocator, suggester: citySuggester)
-        _recommendationModel = StateObject(wrappedValue: CityRecommendationViewModel(matcher: matcher))
     }
 
     var body: some View {
@@ -155,11 +147,6 @@ struct HomeScreen: View {
         .accessibilityLabel("关闭搜索")
     }
 
-    private var locationRecommendation: HomeSearchList.LocationRecommendation? {
-        guard let city = recommendationModel.recommendedCity else { return nil }
-        return HomeSearchList.LocationRecommendation(city: city)
-    }
-
     @ViewBuilder
     private var searchScene: some View {
         let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -178,7 +165,7 @@ struct HomeScreen: View {
                 case .addedCities:
                     VStack(alignment: .leading, spacing: 10) {
                         HomeSearchList(
-                            recommendation: locationRecommendation,
+                            recommendation: nil,
                             cities: viewModel.cities,
                             maxHeight: 280,
                             enableDelete: true,
@@ -206,7 +193,7 @@ struct HomeScreen: View {
 
                 case .suggestions:
                     HomeSearchList(
-                        recommendation: locationRecommendation,
+                        recommendation: nil,
                         cities: searchModel.suggestions,
                         maxHeight: 360,
                         enableDelete: false,
@@ -252,11 +239,6 @@ struct HomeScreen: View {
 
     private func searchSceneMode(trimmedQuery: String) -> SearchSceneMode {
         if trimmedQuery.isEmpty {
-            // If we have a location-based recommendation, show it as the first row even when the
-            // user hasn't typed anything yet.
-            if recommendationModel.recommendedCity != nil {
-                return .addedCities
-            }
             return viewModel.cities.isEmpty ? .empty : .addedCities
         }
 
@@ -319,7 +301,6 @@ struct HomeScreen: View {
             isSearching = true
         }
         focusSearchToken = UUID()
-        recommendationModel.refreshIfNeeded()
     }
 
     private func exitSearch() {
@@ -480,9 +461,13 @@ private struct PressableIconButtonStyle: ButtonStyle {
     }
 }
 
-#Preview {
-    HomeScreen(
-        weatherProvider: MockWeatherProvider(),
-        cityStore: UserDefaultsCityListStore()
-    )
+#if DEBUG
+struct HomeScreen_Previews: PreviewProvider {
+    static var previews: some View {
+        HomeScreen(
+            weatherProvider: MockWeatherProvider(),
+            cityStore: UserDefaultsCityListStore()
+        )
+    }
 }
+#endif
