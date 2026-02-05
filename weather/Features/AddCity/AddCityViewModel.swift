@@ -9,7 +9,7 @@ import Combine
 @MainActor
 final class AddCityViewModel: ObservableObject {
     @Published var query: String = ""
-    @Published private(set) var suggestions: [String] = []
+    @Published private(set) var suggestions: [Place] = []
 
     private let citySuggester: any CitySuggesting
     private var cancellables: Set<AnyCancellable> = []
@@ -36,6 +36,11 @@ final class AddCityViewModel: ObservableObject {
             return
         }
 
+        if trimmed.count < 2 {
+            // Keep UI calm for 1-character queries.
+            return
+        }
+
         suggestionsTask = Task { [weak self] in
             do {
                 let list = try await self?.citySuggester.suggestions(matching: trimmed, limit: 20) ?? []
@@ -48,4 +53,3 @@ final class AddCityViewModel: ObservableObject {
         }
     }
 }
-

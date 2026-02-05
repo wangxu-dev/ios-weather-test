@@ -8,10 +8,10 @@
 import Foundation
 
 struct MockWeatherProvider: WeatherProviding {
-    func weather(for city: String) async throws -> WeatherPayload {
+    func weather(for place: Place) async throws -> WeatherPayload {
         WeatherPayload(
             weatherInfo: WeatherInfo(
-                city: city,
+                city: place.displayName,
                 updateTime: "2026-01-25 12:00:00",
                 tempCurrent: "6",
                 tempHigh: "10",

@@ -10,25 +10,25 @@ struct AddCityScreen: View {
     @State private var resignSearchToken = UUID()
     @Environment(\.colorScheme) private var colorScheme
 
-    let existingCities: [String]
+    let existingPlaces: [Place]
     let canClose: Bool
-    let onSelectCity: (String) -> Void
-    let onAddCity: (String) -> Void
+    let onSelectPlace: (Place) -> Void
+    let onAddPlace: (Place) -> Void
     let onClose: () -> Void
 
     init(
         citySuggester: any CitySuggesting,
-        existingCities: [String],
+        existingPlaces: [Place],
         canClose: Bool,
-        onSelectCity: @escaping (String) -> Void,
-        onAddCity: @escaping (String) -> Void,
+        onSelectPlace: @escaping (Place) -> Void,
+        onAddPlace: @escaping (Place) -> Void,
         onClose: @escaping () -> Void
     ) {
         _viewModel = StateObject(wrappedValue: AddCityViewModel(citySuggester: citySuggester))
-        self.existingCities = existingCities
+        self.existingPlaces = existingPlaces
         self.canClose = canClose
-        self.onSelectCity = onSelectCity
-        self.onAddCity = onAddCity
+        self.onSelectPlace = onSelectPlace
+        self.onAddPlace = onAddPlace
         self.onClose = onClose
     }
 
@@ -93,22 +93,26 @@ struct AddCityScreen: View {
     private var content: some View {
         let trimmed = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            if !existingCities.isEmpty {
-                CityListPanel(title: "已添加", cities: existingCities, maxHeight: 360, style: .plain) { name in
+            if !existingPlaces.isEmpty {
+                CityListPanel(title: "已添加", cities: existingPlaces.map(\.displayName), maxHeight: 360, style: .plain) { name in
                     resignSearchToken = UUID()
-                    onSelectCity(name)
+                    if let place = existingPlaces.first(where: { $0.displayName == name }) {
+                        onSelectPlace(place)
+                    }
                 }
             } else {
                 EmptyView()
             }
         } else {
             if !viewModel.suggestions.isEmpty {
-                CityListPanel(title: "搜索结果", cities: viewModel.suggestions, maxHeight: 420, style: .plain) { name in
+                CityListPanel(title: "搜索结果", cities: viewModel.suggestions.map(\.displayName), maxHeight: 420, style: .plain) { name in
                     resignSearchToken = UUID()
-                    if existingCities.contains(name) {
-                        onSelectCity(name)
-                    } else {
-                        onAddCity(name)
+                    if let selected = viewModel.suggestions.first(where: { $0.displayName == name }) {
+                        if existingPlaces.contains(where: { $0.id == selected.id }) {
+                            onSelectPlace(selected)
+                        } else {
+                            onAddPlace(selected)
+                        }
                     }
                 }
             } else {
@@ -121,11 +125,7 @@ struct AddCityScreen: View {
         let trimmed = viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         resignSearchToken = UUID()
-        if existingCities.contains(trimmed) {
-            onSelectCity(trimmed)
-        } else {
-            onAddCity(trimmed)
-        }
+        onAddPlace(Place(name: trimmed))
     }
 
     private var background: some View {
@@ -165,10 +165,10 @@ struct AddCityScreen_Previews: PreviewProvider {
     static var previews: some View {
         AddCityScreen(
             citySuggester: WeatherComCnCitySuggester(),
-            existingCities: ["北京", "上海"],
+            existingPlaces: [Place(name: "北京"), Place(name: "上海")],
             canClose: true,
-            onSelectCity: { _ in },
-            onAddCity: { _ in },
+            onSelectPlace: { _ in },
+            onAddPlace: { _ in },
             onClose: {}
         )
     }

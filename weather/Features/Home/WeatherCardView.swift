@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct WeatherCardView: View {
-    let city: String
+    let place: Place
     let state: HomeViewModel.WeatherState
     let isRefreshing: Bool
 
@@ -43,7 +43,7 @@ struct WeatherCardView: View {
             if let info = payload.weatherInfo {
                 weatherBody(info)
             } else {
-                notice(systemImage: "questionmark", title: city, message: "未获取到天气数据。")
+                notice(systemImage: "questionmark", title: place.displayName, message: "未获取到天气数据。")
             }
         }
     }

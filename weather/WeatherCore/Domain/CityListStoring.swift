@@ -8,10 +8,9 @@
 import Foundation
 
 protocol CityListStoring: Sendable {
-    func loadCities() async -> [String]
-    func saveCities(_ cities: [String]) async
+    func loadPlaces() async -> [Place]
+    func savePlaces(_ places: [Place]) async
 
-    func loadSelectedCity() async -> String?
-    func saveSelectedCity(_ city: String?) async
+    func loadSelectedPlaceId() async -> String?
+    func saveSelectedPlaceId(_ placeId: String?) async
 }
-

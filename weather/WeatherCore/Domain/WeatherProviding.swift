@@ -8,7 +8,7 @@
 import Foundation
 
 protocol WeatherProviding {
-    func weather(for city: String) async throws -> WeatherPayload
+    func weather(for place: Place) async throws -> WeatherPayload
 }
 
 struct WeatherAPIError: LocalizedError {

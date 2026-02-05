@@ -126,10 +126,12 @@ struct WeatherScreen: View {
     }
 
     private var suggestionsPanel: some View {
-        CityListPanel(cities: viewModel.citySuggestions) { name in
+        CityListPanel(cities: viewModel.citySuggestions.map(\.displayName)) { name in
             resignSearchToken = UUID()
             viewModel.setSearchFocused(false)
-            viewModel.selectSuggestion(name)
+            if let place = viewModel.citySuggestions.first(where: { $0.displayName == name }) {
+                viewModel.selectSuggestion(place.name)
+            }
         }
     }
 

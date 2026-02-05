@@ -8,6 +8,5 @@
 import Foundation
 
 protocol CitySuggesting: Sendable {
-    func suggestions(matching query: String, limit: Int) async throws -> [String]
+    func suggestions(matching query: String, limit: Int) async throws -> [Place]
 }
-

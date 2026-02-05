@@ -15,10 +15,10 @@ final class HomeViewModel: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var cities: [String] = []
-    @Published var selectedCity: String?
-    @Published private(set) var weatherByCity: [String: WeatherState] = [:]
-    @Published private(set) var refreshingCities: Set<String> = []
+    @Published private(set) var places: [Place] = []
+    @Published var selectedPlaceId: String?
+    @Published private(set) var weatherByPlaceId: [String: WeatherState] = [:]
+    @Published private(set) var refreshingPlaceIds: Set<String> = []
 
     private let weatherProvider: any WeatherProviding
     private let cityStore: any CityListStoring
@@ -41,126 +41,129 @@ final class HomeViewModel: ObservableObject {
     }
 
     func loadFromDisk() async {
-        let savedCities = await cityStore.loadCities()
-        let savedSelected = await cityStore.loadSelectedCity()
+        let savedPlaces = await cityStore.loadPlaces()
+        let savedSelectedId = await cityStore.loadSelectedPlaceId()
         let cached = await weatherCacheStore.loadCache()
 
-        cities = savedCities
-        selectedCity = savedSelected ?? savedCities.first
+        places = savedPlaces
+        selectedPlaceId = savedSelectedId ?? savedPlaces.first?.id
 
         // Keep selected city consistent.
-        if let selectedCity, !cities.contains(selectedCity) {
-            self.selectedCity = cities.first
+        if let selectedPlaceId, !places.contains(where: { $0.id == selectedPlaceId }) {
+            self.selectedPlaceId = places.first?.id
         }
 
         // Prime weather state map from cache so we can render immediately.
-        for city in cities {
-            if let payload = cached[city] {
-                weatherByCity[city] = .loaded(payload)
-            } else if weatherByCity[city] == nil {
-                weatherByCity[city] = .idle
+        for place in places {
+            if let payload = cached[place.id] {
+                weatherByPlaceId[place.id] = .loaded(payload)
+            } else if weatherByPlaceId[place.id] == nil {
+                weatherByPlaceId[place.id] = .idle
             }
         }
 
-        refreshAllCities()
+        refreshAllPlaces()
     }
 
-    func selectCity(_ city: String) {
-        selectedCity = city
+    func selectPlaceId(_ placeId: String) {
+        selectedPlaceId = placeId
         Task { [cityStore] in
-            await cityStore.saveSelectedCity(city)
+            await cityStore.saveSelectedPlaceId(placeId)
         }
 
         // Always refresh when switching cities (hot update behavior).
-        fetchWeather(for: city)
+        fetchWeather(for: placeId)
     }
 
-    func addCity(_ city: String) {
-        let trimmed = city.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    func addPlace(_ place: Place) {
+        let trimmedName = place.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
 
-        var next = cities.filter { $0 != trimmed }
-        next.append(trimmed)
-        cities = next
+        var next = places.filter { $0.id != place.id }
+        if place.id == "current-location" {
+            next.insert(place, at: 0)
+        } else {
+            next.append(place)
+        }
+        places = next
 
-        // Ensure we have a state entry.
-        if weatherByCity[trimmed] == nil {
-            weatherByCity[trimmed] = .idle
+        if weatherByPlaceId[place.id] == nil {
+            weatherByPlaceId[place.id] = .idle
         }
 
-        selectedCity = trimmed
-        Task { [cityStore, next] in
-            await cityStore.saveCities(next)
-            await cityStore.saveSelectedCity(trimmed)
+        selectedPlaceId = place.id
+        Task { [cityStore, next, placeId = place.id] in
+            await cityStore.savePlaces(next)
+            await cityStore.saveSelectedPlaceId(placeId)
         }
-        fetchWeather(for: trimmed)
+        fetchWeather(for: place.id)
     }
 
-    func removeCity(_ city: String) {
-        let trimmed = city.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard cities.contains(trimmed) else { return }
+    func removePlaceId(_ placeId: String) {
+        guard !placeId.isEmpty else { return }
+        guard places.contains(where: { $0.id == placeId }) else { return }
 
-        tasks[trimmed]?.cancel()
-        tasks[trimmed] = nil
-        refreshingCities.remove(trimmed)
-        weatherByCity.removeValue(forKey: trimmed)
+        tasks[placeId]?.cancel()
+        tasks[placeId] = nil
+        refreshingPlaceIds.remove(placeId)
+        weatherByPlaceId.removeValue(forKey: placeId)
 
-        let next = cities.filter { $0 != trimmed }
-        cities = next
+        let next = places.filter { $0.id != placeId }
+        places = next
 
-        if selectedCity == trimmed {
-            selectedCity = next.first
+        if selectedPlaceId == placeId {
+            selectedPlaceId = next.first?.id
         }
 
-        Task { [cityStore, weatherCacheStore, next, selectedCity] in
-            await cityStore.saveCities(next)
-            await cityStore.saveSelectedCity(selectedCity)
-            await weatherCacheStore.remove(city: trimmed)
-        }
-    }
-
-    func refreshAllCities() {
-        for city in cities {
-            fetchWeather(for: city)
+        Task { [cityStore, weatherCacheStore, next, selectedPlaceId] in
+            await cityStore.savePlaces(next)
+            await cityStore.saveSelectedPlaceId(selectedPlaceId)
+            await weatherCacheStore.remove(placeId: placeId)
         }
     }
 
-    func fetchWeather(for city: String) {
-        tasks[city]?.cancel()
-        let previous = weatherByCity[city]
-        refreshingCities.insert(city)
+    func refreshAllPlaces() {
+        for place in places {
+            fetchWeather(for: place.id)
+        }
+    }
+
+    func fetchWeather(for placeId: String) {
+        tasks[placeId]?.cancel()
+        let previous = weatherByPlaceId[placeId]
+        refreshingPlaceIds.insert(placeId)
         if previous == nil {
-            weatherByCity[city] = .idle
+            weatherByPlaceId[placeId] = .idle
         }
 
-        tasks[city] = Task { [weak self] in
+        tasks[placeId] = Task { [weak self] in
             do {
-                let payload = try await self?.weatherProvider.weather(for: city)
+                guard let place = self?.places.first(where: { $0.id == placeId }) else { return }
+                let payload = try await self?.weatherProvider.weather(for: place)
                 guard let payload else { return }
                 if Task.isCancelled { return }
-                self?.refreshingCities.remove(city)
-                self?.weatherByCity[city] = .loaded(payload)
+                self?.refreshingPlaceIds.remove(placeId)
+                self?.weatherByPlaceId[placeId] = .loaded(payload)
                 Task { [weatherCacheStore = self?.weatherCacheStore] in
-                    await weatherCacheStore?.save(city: city, payload: payload)
+                    await weatherCacheStore?.save(placeId: placeId, payload: payload)
                 }
             } catch {
                 if Task.isCancelled { return }
-                self?.refreshingCities.remove(city)
+                self?.refreshingPlaceIds.remove(placeId)
 
                 // If we were refreshing an already-loaded city, keep the previous data to avoid UI flashing.
                 switch previous {
                 case .loaded:
                     break
                 default:
-                    self?.weatherByCity[city] = .failed(error.localizedDescription)
+                    self?.weatherByPlaceId[placeId] = .failed(error.localizedDescription)
                 }
             }
         }
     }
 
-    func refreshSelectedCity() {
-        guard let selectedCity else { return }
-        fetchWeather(for: selectedCity)
+    func refreshSelectedPlace() {
+        guard let selectedPlaceId else { return }
+        fetchWeather(for: selectedPlaceId)
     }
 }

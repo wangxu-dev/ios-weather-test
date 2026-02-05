@@ -10,8 +10,7 @@ import Foundation
 
 protocol WeatherCacheStoring: Sendable {
     func loadCache() async -> [String: WeatherPayload]
-    func save(city: String, payload: WeatherPayload) async
-    func remove(city: String) async
+    func save(placeId: String, payload: WeatherPayload) async
+    func remove(placeId: String) async
     func clear() async
 }
-

@@ -64,14 +64,13 @@ final class OpenMeteoClient: WeatherProviding {
         self.session = session
     }
 
-    func weather(for city: String) async throws -> WeatherPayload {
-        let trimmed = city.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw WeatherAPIError(message: "城市名不能为空。")
+    func weather(for place: Place) async throws -> WeatherPayload {
+        let resolved = try await resolvePlace(place)
+        guard let latitude = resolved.latitude, let longitude = resolved.longitude else {
+            throw WeatherAPIError(message: "没有可用的经纬度。")
         }
 
-        let place = try await geocode(cityName: trimmed)
-        let forecast = try await forecast(latitude: place.latitude, longitude: place.longitude)
+        let forecast = try await forecast(latitude: latitude, longitude: longitude)
 
         guard let current = forecast.current else {
             throw WeatherAPIError(message: "没有拿到 current 天气数据。")
@@ -81,7 +80,7 @@ final class OpenMeteoClient: WeatherProviding {
         let minTemp = forecast.daily?.temperature2mMin?.first
 
         let info = WeatherInfo(
-            city: place.name,
+            city: resolved.displayName,
             updateTime: formatTime(current.time),
             tempCurrent: formatTemp(current.temperature2m),
             tempHigh: formatTemp(maxTemp ?? current.temperature2m),
@@ -94,7 +93,20 @@ final class OpenMeteoClient: WeatherProviding {
         return WeatherPayload(weatherInfo: info)
     }
 
-    private func geocode(cityName: String) async throws -> GeocodingResult {
+    private func resolvePlace(_ place: Place) async throws -> Place {
+        if place.latitude != nil, place.longitude != nil {
+            return place
+        }
+
+        let trimmed = place.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw WeatherAPIError(message: "城市名不能为空。")
+        }
+
+        return try await geocode(cityName: trimmed)
+    }
+
+    private func geocode(cityName: String) async throws -> Place {
         var components = URLComponents(string: "https://geocoding-api.open-meteo.com/v1/search")!
         components.queryItems = [
             URLQueryItem(name: "name", value: cityName),
@@ -115,7 +127,13 @@ final class OpenMeteoClient: WeatherProviding {
         guard let place = decoded.results?.first else {
             throw WeatherAPIError(message: "城市 '\(cityName)' 未找到。")
         }
-        return place
+        return Place(
+            name: place.name,
+            country: place.country,
+            admin1: place.admin1,
+            latitude: place.latitude,
+            longitude: place.longitude
+        )
     }
 
     private func forecast(latitude: Double, longitude: Double) async throws -> ForecastEnvelope {

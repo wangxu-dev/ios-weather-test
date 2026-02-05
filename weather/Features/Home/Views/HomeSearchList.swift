@@ -6,44 +6,48 @@
 import SwiftUI
 
 struct HomeSearchList: View {
-    struct LocationRecommendation: Hashable, Sendable {
-        var city: String
+    struct PrimaryAction: Hashable {
+        var title: String
+        var systemImage: String
     }
 
-    let recommendation: LocationRecommendation?
-    let cities: [String]
+    let primaryAction: PrimaryAction?
+    let places: [Place]
     let maxHeight: CGFloat
     let enableDelete: Bool
-    let onSelect: (String) -> Void
-    let onDelete: ((String) -> Void)?
+    let onSelect: (Place) -> Void
+    let onDelete: ((Place) -> Void)?
+    let onPrimaryAction: (() -> Void)?
 
     init(
-        recommendation: LocationRecommendation?,
-        cities: [String],
+        primaryAction: PrimaryAction?,
+        places: [Place],
         maxHeight: CGFloat,
         enableDelete: Bool,
-        onSelect: @escaping (String) -> Void,
-        onDelete: ((String) -> Void)? = nil
+        onSelect: @escaping (Place) -> Void,
+        onDelete: ((Place) -> Void)? = nil,
+        onPrimaryAction: (() -> Void)? = nil
     ) {
-        self.recommendation = recommendation
-        self.cities = cities
+        self.primaryAction = primaryAction
+        self.places = places
         self.maxHeight = maxHeight
         self.enableDelete = enableDelete
         self.onSelect = onSelect
         self.onDelete = onDelete
+        self.onPrimaryAction = onPrimaryAction
     }
 
     var body: some View {
         List {
-            if let recommendation {
+            if let primaryAction, let onPrimaryAction {
                 Button {
-                    onSelect(recommendation.city)
+                    onPrimaryAction()
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "location.fill")
+                        Image(systemName: primaryAction.systemImage)
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.secondary)
-                        Text("定位推荐：\(recommendation.city)")
+                        Text(primaryAction.title)
                             .foregroundStyle(.primary)
                             .fontWeight(.semibold)
                         Spacer()
@@ -56,12 +60,12 @@ struct HomeSearchList: View {
                 .listRowSeparatorTint(Color(uiColor: .separator).opacity(0.35))
             }
 
-            ForEach(cities, id: \.self) { name in
+            ForEach(places) { place in
                 Button {
-                    onSelect(name)
+                    onSelect(place)
                 } label: {
                     HStack {
-                        Text(name)
+                        Text(place.displayName)
                             .foregroundStyle(.primary)
                         Spacer()
                     }
@@ -74,7 +78,7 @@ struct HomeSearchList: View {
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     if enableDelete, let onDelete {
                         Button(role: .destructive) {
-                            onDelete(name)
+                            onDelete(place)
                         } label: {
                             Label("删除", systemImage: "trash")
                         }

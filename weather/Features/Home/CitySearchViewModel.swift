@@ -9,7 +9,7 @@ import Combine
 @MainActor
 final class CitySearchViewModel: ObservableObject {
     @Published var query: String = ""
-    @Published private(set) var suggestions: [String] = []
+    @Published private(set) var suggestions: [Place] = []
     @Published private(set) var isSearching: Bool = false
     @Published private(set) var isDebouncing: Bool = false
     /// The query string for which `suggestions` was last completed.
@@ -71,6 +71,15 @@ final class CitySearchViewModel: ObservableObject {
             suggestions = []
             isSearching = false
             isDebouncing = false
+            lastCompletedQuery = ""
+            return
+        }
+
+        // Open‑Meteo geocoding is not very useful for 1-character queries; avoid "no results" flicker.
+        if trimmed.count < 2 {
+            isSearching = false
+            isDebouncing = false
+            // Keep previous suggestions while user is still typing.
             lastCompletedQuery = ""
             return
         }

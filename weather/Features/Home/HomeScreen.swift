@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import CoreLocation
 
 struct HomeScreen: View {
     @StateObject private var viewModel: HomeViewModel
@@ -11,6 +12,9 @@ struct HomeScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var isSearching: Bool = false
+    @State private var isLocating: Bool = false
+    @State private var locationErrorMessage: String? = nil
+    @State private var locationProvider = CurrentLocationProvider()
     @State private var resignSearchToken = UUID()
     @State private var focusSearchToken: UUID? = nil
     @State private var pageScrollMinY: [String: CGFloat] = [:]
@@ -55,10 +59,18 @@ struct HomeScreen: View {
         .onChange(of: scenePhase) { _, newValue in
             guard newValue == .active else { return }
             guard !isSearching else { return }
-            viewModel.refreshAllCities()
+            viewModel.refreshAllPlaces()
         }
         .onPreferenceChange(PageScrollMinYPreferenceKey.self) { dict in
             pageScrollMinY.merge(dict) { _, new in new }
+        }
+        .alert("定位失败", isPresented: Binding(
+            get: { locationErrorMessage != nil },
+            set: { if !$0 { locationErrorMessage = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(locationErrorMessage ?? "")
         }
     }
 
@@ -70,7 +82,7 @@ struct HomeScreen: View {
                     .padding(.horizontal)
                     .padding(.top, topBarTotalHeight)
                     .transition(.opacity)
-            } else if viewModel.cities.isEmpty {
+            } else if viewModel.places.isEmpty {
                 emptyHint
                     .padding(.horizontal)
                     .padding(.top, topBarTotalHeight + 8)
@@ -95,8 +107,9 @@ struct HomeScreen: View {
                 closeButton
                     .transition(.opacity)
             } else {
-                Text(viewModel.selectedCity ?? "天气")
+                Text(selectedPlaceTitle)
                     .font(.title3.weight(.semibold))
+                    .lineLimit(1)
                     .transition(.opacity)
 
                 Spacer(minLength: 0)
@@ -154,67 +167,59 @@ struct HomeScreen: View {
         let mode = searchSceneMode(trimmedQuery: trimmed)
         let showNoResults =
             !trimmed.isEmpty
+            && trimmed.count >= 2
             && !searchModel.isSearching
             && !searchModel.isDebouncing
             && searchModel.suggestions.isEmpty
             && searchModel.lastCompletedQuery == trimmed
 
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .top) {
-                switch mode {
-                case .addedCities:
-                    VStack(alignment: .leading, spacing: 10) {
-                        HomeSearchList(
-                            recommendation: nil,
-                            cities: viewModel.cities,
-                            maxHeight: 280,
-                            enableDelete: true,
-                            onSelect: { name in
-                                resignSearchToken = UUID()
-                                if viewModel.cities.contains(name) {
-                                    viewModel.selectCity(name)
-                                } else {
-                                    viewModel.addCity(name)
-                                }
-                                exitSearch()
-                            },
-                            onDelete: { name in
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
-                                    viewModel.removeCity(name)
-                                }
-                            }
-                        )
-
-                        TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
-                            .padding(.horizontal, 4)
-                    }
-                    .padding(.top, 6)
-                    .transition(.opacity)
-
-                case .suggestions:
-                    HomeSearchList(
-                        recommendation: nil,
-                        cities: searchModel.suggestions,
-                        maxHeight: 360,
-                        enableDelete: false,
-                        onSelect: { name in
-                            resignSearchToken = UUID()
-                            if viewModel.cities.contains(name) {
-                                viewModel.selectCity(name)
-                            } else {
-                                viewModel.addCity(name)
-                            }
-                            exitSearch()
-                        }
-                    )
-                    .padding(.top, 6)
-                    .transition(.opacity)
-
-                case .searching, .noResults, .empty:
-                    EmptyView()
-                }
+        let listPlaces: [Place] = {
+            switch mode {
+            case .addedCities:
+                return viewModel.places
+            case .suggestions:
+                return searchModel.suggestions
+            case .searching, .noResults, .empty:
+                // Still show the primary action row even when there's no list content.
+                return trimmed.isEmpty ? viewModel.places : []
             }
+        }()
+
+        let enableDelete = trimmed.isEmpty && mode == .addedCities
+        let maxHeight: CGFloat = trimmed.isEmpty ? 280 : 360
+        let primaryAction = HomeSearchList.PrimaryAction(title: isLocating ? "正在定位…" : "使用当前位置", systemImage: "location.fill")
+
+        VStack(alignment: .leading, spacing: 10) {
+            HomeSearchList(
+                primaryAction: primaryAction,
+                places: listPlaces,
+                maxHeight: maxHeight,
+                enableDelete: enableDelete,
+                onSelect: { place in
+                    resignSearchToken = UUID()
+                    switch mode {
+                    case .addedCities, .searching, .noResults, .empty:
+                        viewModel.selectPlaceId(place.id)
+                    case .suggestions:
+                        viewModel.addPlace(place)
+                    }
+                    exitSearch()
+                },
+                onDelete: enableDelete ? { place in
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
+                        viewModel.removePlaceId(place.id)
+                    }
+                } : nil,
+                onPrimaryAction: { useCurrentLocation() }
+            )
+            .padding(.top, 6)
+            .transition(.opacity)
             .animation(.easeInOut(duration: 0.12), value: mode)
+
+            if trimmed.isEmpty, mode == .addedCities {
+                TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
+                    .padding(.horizontal, 4)
+            }
 
             // Only show "no results" after a completed search for the current query.
             // We intentionally do not show a "searching..." hint to avoid any perceived flicker
@@ -239,7 +244,7 @@ struct HomeScreen: View {
 
     private func searchSceneMode(trimmedQuery: String) -> SearchSceneMode {
         if trimmedQuery.isEmpty {
-            return viewModel.cities.isEmpty ? .empty : .addedCities
+            return viewModel.places.isEmpty ? .empty : .addedCities
         }
 
         if !searchModel.suggestions.isEmpty {
@@ -261,29 +266,29 @@ struct HomeScreen: View {
 
     private var cityPager: some View {
         TabView(selection: Binding(
-            get: { viewModel.selectedCity ?? viewModel.cities.first ?? "" },
-            set: { viewModel.selectCity($0) }
+            get: { viewModel.selectedPlaceId ?? viewModel.places.first?.id ?? "" },
+            set: { viewModel.selectPlaceId($0) }
         )) {
-            ForEach(viewModel.cities, id: \.self) { city in
+            ForEach(viewModel.places) { place in
                 ScrollView {
-                    PageScrollMinYReporter(city: city, coordinateSpaceName: "HomeScroll-\(city)")
+                    PageScrollMinYReporter(key: place.id, coordinateSpaceName: "HomeScroll-\(place.id)")
                     // Space for the overlayed top bar. This scrolls away as you scroll up,
                     // so content can reach the top without being covered by an always-on header.
                     Color.clear
                         .frame(height: topBarTotalHeight)
 
                     WeatherCardView(
-                        city: city,
-                        state: viewModel.weatherByCity[city] ?? .idle,
-                        isRefreshing: viewModel.refreshingCities.contains(city)
+                        place: place,
+                        state: viewModel.weatherByPlaceId[place.id] ?? .idle,
+                        isRefreshing: viewModel.refreshingPlaceIds.contains(place.id)
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.top, 2)
                 }
-                .coordinateSpace(name: "HomeScroll-\(city)")
+                .coordinateSpace(name: "HomeScroll-\(place.id)")
                 .scrollIndicators(.hidden)
-                .tag(city)
+                .tag(place.id)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -319,19 +324,18 @@ struct HomeScreen: View {
         // Prevent selecting from stale suggestions while a new query is still searching.
         guard !searchModel.isSearching else { return }
 
-        // Only allow adding/selecting cities that are known to the data source.
-        // 1) If user already added it, just select.
-        if viewModel.cities.contains(trimmed) {
+        // 1) If user already added it, just select the first match.
+        if let existing = viewModel.places.first(where: { $0.name == trimmed }) {
             resignSearchToken = UUID()
-            viewModel.selectCity(trimmed)
+            viewModel.selectPlaceId(existing.id)
             exitSearch()
             return
         }
 
         // 2) If there is an exact match in current suggestions, accept it.
-        if let exact = searchModel.suggestions.first(where: { $0 == trimmed }) {
+        if let exact = searchModel.suggestions.first(where: { $0.name == trimmed }) {
             resignSearchToken = UUID()
-            viewModel.addCity(exact)
+            viewModel.addPlace(exact)
             exitSearch()
             return
         }
@@ -339,25 +343,28 @@ struct HomeScreen: View {
         // 3) If there is exactly one suggestion, accept it.
         if searchModel.suggestions.count == 1, let only = searchModel.suggestions.first {
             resignSearchToken = UUID()
-            viewModel.addCity(only)
+            viewModel.addPlace(only)
             exitSearch()
             return
         }
 
-        // Otherwise, require the user to tap one of the suggestions.
+        // Otherwise, accept as a legacy place (will be geocoded on demand).
+        resignSearchToken = UUID()
+        viewModel.addPlace(Place(name: trimmed))
+        exitSearch()
     }
 
-    private var currentCity: String {
-        viewModel.selectedCity ?? viewModel.cities.first ?? ""
+    private var currentPlaceId: String {
+        viewModel.selectedPlaceId ?? viewModel.places.first?.id ?? ""
     }
 
     private var topBarFadeProgress: CGFloat {
         // Only fade while not searching, and only when there's content to scroll.
         guard !isSearching else { return 0 }
-        guard !viewModel.cities.isEmpty else { return 0 }
+        guard !viewModel.places.isEmpty else { return 0 }
 
         // `minY` starts near 0 and becomes negative as you scroll up.
-        let minY = pageScrollMinY[currentCity] ?? 0
+        let minY = pageScrollMinY[currentPlaceId] ?? 0
         let threshold: CGFloat = 44
         let delta = max(0, -minY)
         return min(1, delta / threshold)
@@ -414,6 +421,35 @@ struct HomeScreen: View {
             return Color.black.opacity(0.14)
         }
     }
+
+    private var selectedPlaceTitle: String {
+        guard let selectedPlaceId = viewModel.selectedPlaceId else { return "天气" }
+        guard let place = viewModel.places.first(where: { $0.id == selectedPlaceId }) else { return "天气" }
+        if place.id == "current-location" { return "当前位置" }
+        return place.name
+    }
+
+    private func useCurrentLocation() {
+        guard !isLocating else { return }
+        isLocating = true
+
+        Task { @MainActor in
+            defer { isLocating = false }
+            do {
+                let coordinate = try await locationProvider.requestCurrentCoordinate()
+                let place = Place(
+                    id: "current-location",
+                    name: "当前位置",
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                )
+                viewModel.addPlace(place)
+                exitSearch()
+            } catch {
+                locationErrorMessage = error.localizedDescription
+            }
+        }
+    }
 }
 
 private struct PageScrollMinYPreferenceKey: PreferenceKey {
@@ -425,7 +461,7 @@ private struct PageScrollMinYPreferenceKey: PreferenceKey {
 }
 
 private struct PageScrollMinYReporter: View {
-    let city: String
+    let key: String
     let coordinateSpaceName: String
 
     var body: some View {
@@ -433,7 +469,7 @@ private struct PageScrollMinYReporter: View {
             Color.clear
                 .preference(
                     key: PageScrollMinYPreferenceKey.self,
-                    value: [city: proxy.frame(in: .named(coordinateSpaceName)).minY]
+                    value: [key: proxy.frame(in: .named(coordinateSpaceName)).minY]
                 )
         }
         .frame(height: 0)

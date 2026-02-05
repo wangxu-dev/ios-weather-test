@@ -25,7 +25,7 @@ final class WeatherViewModel: ObservableObject {
 
     @Published var city: String = ""
     @Published private(set) var state: State = .idle
-    @Published private(set) var citySuggestions: [String] = []
+    @Published private(set) var citySuggestions: [Place] = []
     @Published private(set) var recentCities: [String] = []
     @Published private(set) var isSearchFocused: Bool = false
 
@@ -99,7 +99,7 @@ final class WeatherViewModel: ObservableObject {
 
         currentTask = Task { [weak self] in
             do {
-                let payload = try await self?.weatherProvider.weather(for: city)
+                let payload = try await self?.weatherProvider.weather(for: Place(name: city))
                 guard let payload else { return }
                 self?.recordRecentCity(city)
                 self?.state = .loaded(payload)
@@ -128,6 +128,10 @@ final class WeatherViewModel: ObservableObject {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             citySuggestions = []
+            return
+        }
+
+        if trimmed.count < 2 {
             return
         }
 
