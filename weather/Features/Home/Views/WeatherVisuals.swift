@@ -311,7 +311,9 @@ struct WeatherHighlightTile<Visual: View>: View {
                     Text(subtitle)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.90)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

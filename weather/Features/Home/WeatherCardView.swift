@@ -16,7 +16,7 @@ struct WeatherCardView: View {
             bodyContent
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        .padding(.top, 0)
         .padding(.bottom, 24)
     }
 
@@ -170,7 +170,7 @@ struct WeatherCardView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(alignment: .topLeading) {
             HeroGlow(weatherCode: info.weatherCode, isDay: info.isDay)
                 .padding(.top, 4)
@@ -207,10 +207,10 @@ struct WeatherCardView: View {
                 let windValue = info.windScale
                 let windDetail = [
                     info.windDirection,
-                    info.windGustMetersPerSecond.map { "阵风 \(String(format: "%.1f", $0)) m/s" } ?? info.windGust,
+                    info.windGustMetersPerSecond.map { "阵风 \(String(format: "%.1f", $0))" } ?? info.windGust,
                 ]
                 .compactMap { $0 }
-                .joined(separator: " · ")
+                .joined(separator: "\n")
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
