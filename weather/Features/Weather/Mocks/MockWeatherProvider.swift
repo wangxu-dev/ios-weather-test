@@ -17,9 +17,22 @@ struct MockWeatherProvider: WeatherProviding {
                 tempHigh: "10",
                 tempLow: "0",
                 weather: "晴",
+                weatherCode: 0,
+                isDay: true,
                 windDirection: "西北风",
-                windScale: "3级"
-            )
+                windScale: "3级",
+                feelsLike: "5",
+                humidity: "35%",
+                precipitation: "0 mm",
+                pressure: "1021 hPa",
+                visibility: "10.0 km",
+                windGust: "6.0 m/s",
+                uvIndexMax: "3.5",
+                sunrise: "2026-01-25 07:08",
+                sunset: "2026-01-25 17:23"
+            ),
+            hourly: nil,
+            daily: nil
         )
     }
 }

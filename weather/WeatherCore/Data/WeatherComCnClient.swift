@@ -28,33 +28,49 @@ final class OpenMeteoClient: WeatherProviding {
 
     private struct ForecastEnvelope: Decodable {
         let timezone: String?
+        let utcOffsetSeconds: Int?
         let current: Current?
-        let daily: Daily?
+        let hourly: HourlyForecast?
+        let daily: DailyForecast?
+
+        enum CodingKeys: String, CodingKey {
+            case timezone
+            case utcOffsetSeconds = "utc_offset_seconds"
+            case current
+            case hourly
+            case daily
+        }
     }
 
     private struct Current: Decodable {
         let time: String
         let temperature2m: Double
+        let relativeHumidity2m: Double?
+        let apparentTemperature: Double?
+        let precipitation: Double?
         let weatherCode: Int
+        let cloudCover: Double?
+        let pressureMsl: Double?
+        let visibility: Double?
+        let windGusts10m: Double?
+        let isDay: Int?
         let windSpeed10m: Double
         let windDirection10m: Double
 
         enum CodingKeys: String, CodingKey {
             case time
             case temperature2m = "temperature_2m"
+            case relativeHumidity2m = "relative_humidity_2m"
+            case apparentTemperature = "apparent_temperature"
+            case precipitation
             case weatherCode = "weather_code"
+            case cloudCover = "cloud_cover"
+            case pressureMsl = "pressure_msl"
+            case visibility
+            case windGusts10m = "wind_gusts_10m"
+            case isDay = "is_day"
             case windSpeed10m = "wind_speed_10m"
             case windDirection10m = "wind_direction_10m"
-        }
-    }
-
-    private struct Daily: Decodable {
-        let temperature2mMax: [Double]?
-        let temperature2mMin: [Double]?
-
-        enum CodingKeys: String, CodingKey {
-            case temperature2mMax = "temperature_2m_max"
-            case temperature2mMin = "temperature_2m_min"
         }
     }
 
@@ -78,6 +94,9 @@ final class OpenMeteoClient: WeatherProviding {
 
         let maxTemp = forecast.daily?.temperature2mMax?.first
         let minTemp = forecast.daily?.temperature2mMin?.first
+        let uvMax = forecast.daily?.uvIndexMax?.first
+        let sunrise = forecast.daily?.sunrise?.first
+        let sunset = forecast.daily?.sunset?.first
 
         let info = WeatherInfo(
             city: resolved.displayName,
@@ -86,11 +105,22 @@ final class OpenMeteoClient: WeatherProviding {
             tempHigh: formatTemp(maxTemp ?? current.temperature2m),
             tempLow: formatTemp(minTemp ?? current.temperature2m),
             weather: weatherText(weatherCode: current.weatherCode),
+            weatherCode: current.weatherCode,
+            isDay: current.isDay == nil ? nil : (current.isDay == 1),
             windDirection: windDirectionText(degrees: current.windDirection10m),
-            windScale: windScaleText(speedMetersPerSecond: current.windSpeed10m)
+            windScale: windScaleText(speedMetersPerSecond: current.windSpeed10m),
+            feelsLike: current.apparentTemperature.map(formatTemp),
+            humidity: current.relativeHumidity2m.map { "\(Int($0.rounded()))%" },
+            precipitation: current.precipitation.map(formatMillimeters),
+            pressure: current.pressureMsl.map { "\(Int($0.rounded())) hPa" },
+            visibility: current.visibility.map(formatVisibilityMeters),
+            windGust: current.windGusts10m.map { "\(formatSpeedMetersPerSecond($0)) m/s" },
+            uvIndexMax: uvMax.map { String(format: "%.1f", $0) },
+            sunrise: sunrise.map(formatTime),
+            sunset: sunset.map(formatTime)
         )
 
-        return WeatherPayload(weatherInfo: info)
+        return WeatherPayload(weatherInfo: info, hourly: forecast.hourly, daily: forecast.daily)
     }
 
     private func resolvePlace(_ place: Place) async throws -> Place {
@@ -141,9 +171,22 @@ final class OpenMeteoClient: WeatherProviding {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(latitude)),
             URLQueryItem(name: "longitude", value: String(longitude)),
-            URLQueryItem(name: "current", value: "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m"),
-            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
+            URLQueryItem(
+                name: "current",
+                value: "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,visibility,wind_gusts_10m,is_day,wind_speed_10m,wind_direction_10m"
+            ),
+            URLQueryItem(
+                name: "hourly",
+                value: "temperature_2m,precipitation_probability,precipitation,weather_code"
+            ),
+            URLQueryItem(
+                name: "daily",
+                value: "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum"
+            ),
             URLQueryItem(name: "timezone", value: "auto"),
+            URLQueryItem(name: "temperature_unit", value: "celsius"),
+            URLQueryItem(name: "wind_speed_unit", value: "ms"),
+            URLQueryItem(name: "precipitation_unit", value: "mm"),
         ]
 
         var request = URLRequest(url: components.url!)
@@ -159,6 +202,24 @@ final class OpenMeteoClient: WeatherProviding {
 
     private func formatTemp(_ value: Double) -> String {
         String(Int(value.rounded()))
+    }
+
+    private func formatMillimeters(_ value: Double) -> String {
+        if value == 0 { return "0 mm" }
+        if value < 1 { return String(format: "%.1f mm", value) }
+        return String(format: "%.0f mm", value)
+    }
+
+    private func formatVisibilityMeters(_ value: Double) -> String {
+        if value >= 1000 {
+            return String(format: "%.1f km", value / 1000.0)
+        }
+        return "\(Int(value.rounded())) m"
+    }
+
+    private func formatSpeedMetersPerSecond(_ value: Double) -> String {
+        if value < 10 { return String(format: "%.1f", value) }
+        return String(format: "%.0f", value)
     }
 
     private func formatTime(_ value: String) -> String {

@@ -131,7 +131,7 @@ final class WeatherViewModel: ObservableObject {
             return
         }
 
-        if trimmed.count < 2 {
+        if trimmed.count < 2, trimmed.unicodeScalars.allSatisfy(\.isASCII) {
             return
         }
 

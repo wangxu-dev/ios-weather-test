@@ -75,8 +75,9 @@ final class CitySearchViewModel: ObservableObject {
             return
         }
 
-        // Open‑Meteo geocoding is not very useful for 1-character queries; avoid "no results" flicker.
-        if trimmed.count < 2 {
+        // Avoid "no results" flicker for 1-character ASCII queries (e.g. "a"),
+        // but allow 1-character CJK queries (e.g. "北") which can be useful.
+        if shouldSkipSearch(for: trimmed) {
             isSearching = false
             isDebouncing = false
             // Keep previous suggestions while user is still typing.
@@ -103,4 +104,9 @@ final class CitySearchViewModel: ObservableObject {
             }
         }
     }
+}
+
+private func shouldSkipSearch(for trimmed: String) -> Bool {
+    guard trimmed.count < 2 else { return false }
+    return trimmed.unicodeScalars.allSatisfy(\.isASCII)
 }

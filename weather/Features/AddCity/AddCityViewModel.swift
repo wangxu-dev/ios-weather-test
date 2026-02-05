@@ -36,8 +36,7 @@ final class AddCityViewModel: ObservableObject {
             return
         }
 
-        if trimmed.count < 2 {
-            // Keep UI calm for 1-character queries.
+        if trimmed.count < 2, trimmed.unicodeScalars.allSatisfy(\.isASCII) {
             return
         }
 
