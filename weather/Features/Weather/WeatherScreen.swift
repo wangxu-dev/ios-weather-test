@@ -31,7 +31,7 @@ struct WeatherScreen: View {
             background
                 .ignoresSafeArea()
 
-            GlassEffectContainer {
+            WeatherGlassEffectContainer {
                 ScrollView {
                     VStack(spacing: 20) {
                         if viewModel.shouldShowContent {
@@ -72,27 +72,15 @@ struct WeatherScreen: View {
     }
 
     private var backgroundColors: [Color] {
-        switch colorScheme {
-        case .light:
-            // Softer, brighter tones so the system search field and text feel native in Light mode.
-            return [
-                Color(red: 0.92, green: 0.96, blue: 1.00),
-                Color(red: 0.92, green: 0.93, blue: 1.00),
-                Color(red: 0.86, green: 0.98, blue: 0.94),
-            ]
-        case .dark:
-            return [
-                Color(red: 0.05, green: 0.05, blue: 0.12),
-                Color(red: 0.18, green: 0.06, blue: 0.48),
-                Color(red: 0.26, green: 0.79, blue: 0.68),
-            ]
-        @unknown default:
-            return [
-                Color(red: 0.05, green: 0.05, blue: 0.12),
-                Color(red: 0.18, green: 0.06, blue: 0.48),
-                Color(red: 0.26, green: 0.79, blue: 0.68),
-            ]
+        if case .loaded(let payload) = viewModel.state, let info = payload.weatherInfo {
+            return WeatherTheme.backgroundColors(
+                weatherCode: info.weatherCode,
+                isDay: info.isDay,
+                colorScheme: colorScheme
+            )
         }
+
+        return WeatherTheme.backgroundColors(weatherCode: nil, isDay: nil, colorScheme: colorScheme)
     }
 
     private var searchBar: some View {
@@ -149,7 +137,7 @@ struct WeatherScreen: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: 24))
+        .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: shadowColor, radius: 12, y: 8)
     }
 
@@ -262,7 +250,7 @@ struct WeatherScreen: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect()
+            .weatherGlassEffect(in: Capsule())
             .accessibilityLabel("数据来源：Open‑Meteo，仅供参考")
     }
 }

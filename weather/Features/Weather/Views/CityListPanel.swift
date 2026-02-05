@@ -96,7 +96,7 @@ private struct PanelBackground: ViewModifier {
         case .glass:
             return AnyView(
                 content
-                    .glassEffect(in: .rect(cornerRadius: 16))
+                    .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             )
         case .plain:
             return AnyView(

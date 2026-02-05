@@ -175,7 +175,7 @@ struct WeatherCardView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .glassEffect(in: .rect(cornerRadius: 16))
+                            .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                     }
                     .padding(.vertical, 2)
@@ -222,7 +222,7 @@ struct WeatherCardView: View {
                         }
                     }
                 }
-                .glassEffect(in: .rect(cornerRadius: 20))
+                .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .padding(.top, 6)
         )
