@@ -156,20 +156,21 @@ struct WeatherCardView: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
+
+                            Label(compactUpdateTime(info.updateTime), systemImage: "clock")
+                                .labelStyle(.titleAndIcon)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                 }
 
                 Spacer(minLength: 0)
             }
-
-            Label(compactUpdateTime(info.updateTime), systemImage: "clock")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .background(alignment: .topLeading) {
             HeroGlow(weatherCode: info.weatherCode, isDay: info.isDay)
                 .padding(.top, 4)

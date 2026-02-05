@@ -475,8 +475,8 @@ struct SunPathTile: View {
     let sunset: String?
 
     var body: some View {
-        let sunriseText = sunrise ?? "—"
-        let sunsetText = sunset ?? "—"
+        let sunriseText = compactTime(sunrise) ?? "—"
+        let sunsetText = compactTime(sunset) ?? "—"
         let progress = sunProgress(updateTime: updateTime, sunrise: sunrise, sunset: sunset) ?? 0.5
 
         HStack(alignment: .center, spacing: 12) {
@@ -493,15 +493,49 @@ struct SunPathTile: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text("日出 \(sunriseText) · 日落 \(sunsetText)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("日出")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(sunriseText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("日落")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(sunsetText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                    }
+
+                    Spacer(minLength: 0)
+                }
             }
 
             Spacer(minLength: 0)
         }
         .padding(12)
+    }
+
+    private func compactTime(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let value = raw.replacingOccurrences(of: "T", with: " ")
+        // "YYYY-MM-DD HH:mm:ss" or "YYYY-MM-DD HH:mm"
+        if value.count >= 16 {
+            let start = value.index(value.startIndex, offsetBy: 11)
+            let end = value.index(value.startIndex, offsetBy: 16)
+            return String(value[start..<end])
+        }
+        if value.count >= 5, value.contains(":") {
+            return String(value.suffix(5))
+        }
+        return value
     }
 
     private func sunProgress(updateTime: String, sunrise: String?, sunset: String?) -> Double? {
