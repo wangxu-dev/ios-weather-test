@@ -25,13 +25,19 @@ struct WeatherInfo: Codable {
     let isDay: Bool?
     let windDirection: String
     let windScale: String
+    let windDegrees: Double?
+    let windSpeedMetersPerSecond: Double?
+    let windGustMetersPerSecond: Double?
     let feelsLike: String?
     let humidity: String?
+    let humidityPercent: Int?
     let precipitation: String?
+    let precipitationMm: Double?
     let pressure: String?
     let visibility: String?
     let windGust: String?
     let uvIndexMax: String?
+    let uvIndexMaxValue: Double?
     let sunrise: String?
     let sunset: String?
 }

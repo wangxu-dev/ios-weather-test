@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct WeatherCardView: View {
     let place: Place
@@ -53,179 +54,127 @@ struct WeatherCardView: View {
         VStack(alignment: .leading, spacing: 18) {
             hero(info)
 
-            metaRow(info)
-
-            if let metrics = metrics(info), !metrics.isEmpty {
-                metricsGrid(metrics)
-            }
+            highlights(info, payload: payload)
 
             if let hourly = payload.hourly {
-                hourlyPreview(hourly)
+                WeatherSection("24 小时") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HourlyChart(
+                            times: hourly.time,
+                            temperatures: hourly.temperature2m,
+                            pops: hourly.precipitationProbability
+                        )
+                        HStack {
+                            Text("温度")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("降水概率")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 12)
+
+                        HourlyTicks(hourly: hourly, symbolName: symbolName(weatherCode:isDay:))
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 14)
+                    }
+                    .padding(.top, 12)
+                }
             }
 
             if let daily = payload.daily {
-                dailyPreview(daily)
+                WeatherSection("未来 7 天") {
+                    VStack(spacing: 0) {
+                        let rows = makeDailyItems(daily, maxCount: 7)
+                        let globalMin = rows.map(\.min).min() ?? 0
+                        let globalMax = rows.map(\.max).max() ?? 1
+
+                        ForEach(rows.indices, id: \.self) { idx in
+                            let row = rows[idx]
+                            HStack(spacing: 12) {
+                                Text(row.label)
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(width: 54, alignment: .leading)
+
+                                Image(systemName: symbolName(weatherCode: row.weatherCode, isDay: true))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 22)
+
+                                TemperatureRangeBar(
+                                    min: Double(globalMin),
+                                    max: Double(globalMax),
+                                    value: Double((row.min + row.max) / 2)
+                                )
+
+                                Text("\(row.min)°/\(row.max)°")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 76, alignment: .trailing)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+
+                            if idx != rows.indices.last {
+                                Divider().opacity(0.45)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
     private func hero(_ info: WeatherInfo) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: symbolName(weatherCode: info.weatherCode, isDay: info.isDay))
-                .font(.system(size: 50, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: symbolName(weatherCode: info.weatherCode, isDay: info.isDay))
+                    .font(.system(size: 54, weight: .semibold, design: .rounded))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.primary)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(info.weather)
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(info.weather)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-                Text("\(info.tempCurrent ?? info.tempHigh)°")
-                    .font(.system(size: 52, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("\(info.tempCurrent ?? info.tempHigh)°")
+                            .font(.system(size: 62, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
 
-                Text("最低 \(info.tempLow)°  最高 \(info.tempHigh)°")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func metaRow(_ info: WeatherInfo) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                GlassPill(systemImage: "wind", text: "\(info.windDirection) \(info.windScale)")
-                GlassPill(systemImage: "clock", text: info.updateTime)
-                if let sunrise = info.sunrise {
-                    GlassPill(systemImage: "sunrise.fill", text: sunrise)
-                }
-                if let sunset = info.sunset {
-                    GlassPill(systemImage: "sunset.fill", text: sunset)
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    private func metrics(_ info: WeatherInfo) -> [(title: String, value: String)]? {
-        var items: [(String, String)] = []
-
-        if let feelsLike = info.feelsLike { items.append(("体感", "\(feelsLike)°")) }
-        if let humidity = info.humidity { items.append(("湿度", humidity)) }
-        if let precipitation = info.precipitation { items.append(("降水", precipitation)) }
-        if let pressure = info.pressure { items.append(("气压", pressure)) }
-        if let visibility = info.visibility { items.append(("能见度", visibility)) }
-        if let windGust = info.windGust { items.append(("阵风", windGust)) }
-        if let uvIndexMax = info.uvIndexMax { items.append(("UV", uvIndexMax)) }
-
-        return items
-    }
-
-    private func metricsGrid(_ metrics: [(title: String, value: String)]) -> some View {
-        let columns = [
-            GridItem(.flexible(minimum: 120), spacing: 10),
-            GridItem(.flexible(minimum: 120), spacing: 10),
-        ]
-
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-            ForEach(metrics, id: \.title) { item in
-                MetricChip(title: item.title, value: item.value)
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private func hourlyPreview(_ hourly: HourlyForecast) -> some View {
-        let items = makeHourlyItems(hourly, maxCount: 14)
-        guard !items.isEmpty else { return AnyView(EmptyView()) }
-
-        return AnyView(
-            VStack(alignment: .leading, spacing: 10) {
-                Text("24 小时")
-                    .font(.headline)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(items, id: \.time) { item in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.label)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-
-                                HStack(spacing: 8) {
-                                    Image(systemName: symbolName(weatherCode: item.weatherCode, isDay: true))
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundStyle(.secondary)
-
-                                    Text("\(item.temp)°")
-                                        .font(.headline.weight(.semibold))
-                                        .monospacedDigit()
-                                }
-
-                                if let pop = item.pop {
-                                    Text("降水 \(pop)%")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-            .padding(.top, 6)
-        )
-    }
-
-    private func dailyPreview(_ daily: DailyForecast) -> some View {
-        let rows = makeDailyItems(daily, maxCount: 7)
-        guard !rows.isEmpty else { return AnyView(EmptyView()) }
-
-        return AnyView(
-            VStack(alignment: .leading, spacing: 10) {
-                Text("未来 7 天")
-                    .font(.headline)
-
-                VStack(spacing: 0) {
-                    ForEach(rows.indices, id: \.self) { idx in
-                        let row = rows[idx]
-                        HStack(spacing: 12) {
-                            Text(row.label)
-                                .font(.subheadline.weight(.semibold))
-                                .frame(width: 52, alignment: .leading)
-
-                            Image(systemName: symbolName(weatherCode: row.weatherCode, isDay: true))
-                                .symbolRenderingMode(.hierarchical)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("最高 \(info.tempHigh)°")
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
-
-                            Spacer(minLength: 0)
-
-                            Text("\(row.min)° / \(row.max)°")
-                                .font(.subheadline.weight(.semibold))
                                 .monospacedDigit()
-                                .foregroundStyle(.primary)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-
-                        if idx != rows.indices.last {
-                            Divider()
-                                .opacity(0.55)
+                            Text("最低 \(info.tempLow)°")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
                         }
                     }
                 }
-                .weatherGlassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                Spacer(minLength: 0)
             }
-            .padding(.top, 6)
-        )
+
+            Label(compactUpdateTime(info.updateTime), systemImage: "clock")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(alignment: .topLeading) {
+            HeroGlow(weatherCode: info.weatherCode, isDay: info.isDay)
+                .padding(.top, 4)
+                .padding(.leading, 4)
+        }
     }
 
     private func notice(systemImage: String, title: String, message: String) -> some View {
@@ -247,6 +196,124 @@ struct WeatherCardView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 6)
+    }
+
+    private func highlights(_ info: WeatherInfo, payload: WeatherPayload) -> some View {
+        WeatherSection("关键指标") {
+            VStack(alignment: .leading, spacing: 12) {
+                let popNow = payload.hourly?.precipitationProbability?.first
+                let precipNow = info.precipitationMm
+                let windValue = info.windScale
+                let windDetail = [
+                    info.windDirection,
+                    info.windGustMetersPerSecond.map { "阵风 \(String(format: "%.1f", $0)) m/s" } ?? info.windGust,
+                ]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        WeatherHighlightTile(
+                            title: "风",
+                            value: windValue,
+                            subtitle: windDetail,
+                            accent: Color.primary.opacity(0.92)
+                        ) {
+                            WindCompass(degrees: info.windDegrees, speed: info.windSpeedMetersPerSecond)
+                                .frame(width: 44, height: 44)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider().opacity(0.28)
+
+                        WeatherHighlightTile(
+                            title: "湿度",
+                            value: info.humidity ?? "—",
+                            subtitle: info.feelsLike.map { "体感 \($0)°" },
+                            accent: Color(red: 0.50, green: 0.90, blue: 1.00)
+                        ) {
+                            RingGauge(
+                                progress: normalizedHumidity(info.humidityPercent) ?? 0,
+                                tint: Color(red: 0.50, green: 0.90, blue: 1.00)
+                            )
+                            .frame(width: 44, height: 44)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Divider().opacity(0.28)
+
+                    HStack(spacing: 0) {
+                        WeatherHighlightTile(
+                            title: "紫外线",
+                            value: info.uvIndexMax.map { "UV \($0)" } ?? "—",
+                            subtitle: uvLevelText(info.uvIndexMaxValue),
+                            accent: Color(red: 1.00, green: 0.90, blue: 0.55)
+                        ) {
+                            UVGauge(progress: normalizedUV(info.uvIndexMaxValue) ?? 0)
+                                .frame(width: 44, height: 44)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider().opacity(0.28)
+
+                        WeatherHighlightTile(
+                            title: "降水",
+                            value: info.precipitation ?? "—",
+                            subtitle: popNow.map { "降水概率 \($0)%" } ?? (precipNow.map { $0 == 0 ? "当前无降水" : "当前强度" }),
+                            accent: Color(red: 0.50, green: 0.90, blue: 1.00)
+                        ) {
+                            PrecipGauge(
+                                progress: normalizedPrecip(precipNow) ?? 0,
+                                tint: Color(red: 0.50, green: 0.90, blue: 1.00)
+                            )
+                            .frame(width: 44, height: 44)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if info.sunrise != nil || info.sunset != nil {
+                        Divider().opacity(0.28)
+                        SunPathTile(
+                            updateTime: info.updateTime,
+                            sunrise: info.sunrise,
+                            sunset: info.sunset
+                        )
+                    }
+                }
+
+                if info.pressure != nil || info.visibility != nil || info.windGust != nil {
+                    let pressureText = info.pressure.map { "气压 \($0)" }
+                    let visibilityText = info.visibility.map { "能见度 \($0)" }
+                    let gustText = info.windGust.map { "阵风 \($0)" }
+                    let items = [pressureText, visibilityText, gustText].compactMap { $0 }
+                    if !items.isEmpty {
+                        Text(items.joined(separator: " · "))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 2)
+                    }
+                }
+
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+        }
+    }
+
+    private func compactUpdateTime(_ raw: String) -> String {
+        // Prefer showing time only to avoid truncation.
+        // Accept "YYYY-MM-DD HH:mm" / "YYYY-MM-DD HH:mm:ss" / "HH:mm"
+        let value = raw.replacingOccurrences(of: "T", with: " ")
+        if value.count >= 16 {
+            let start = value.index(value.startIndex, offsetBy: 11)
+            let end = value.index(value.startIndex, offsetBy: 16)
+            return String(value[start..<end])
+        }
+        if value.count >= 5, value.contains(":") {
+            return String(value.suffix(5))
+        }
+        return value
     }
 
     private func symbolName(weatherCode: Int?, isDay: Bool?) -> String {
@@ -276,6 +343,57 @@ struct WeatherCardView: View {
         default:
             return day ? "cloud.sun.fill" : "cloud.moon.fill"
         }
+    }
+
+    private func normalizedWind(_ speed: Double?) -> Double? {
+        guard let speed else { return nil }
+        // 0–20 m/s -> 0–1
+        return min(1, max(0, speed / 20.0))
+    }
+
+    private func normalizedHumidity(_ percent: Int?) -> Double? {
+        guard let percent else { return nil }
+        return min(1, max(0, Double(percent) / 100.0))
+    }
+
+    private func normalizedPrecip(_ mm: Double?) -> Double? {
+        guard let mm else { return nil }
+        // 0–10 mm -> 0–1 (current intensity is usually small)
+        return min(1, max(0, mm / 10.0))
+    }
+
+    private func normalizedUV(_ uv: Double?) -> Double? {
+        guard let uv else { return nil }
+        // 0–11+ scale
+        return min(1, max(0, uv / 11.0))
+    }
+
+    private func uvLevelText(_ uv: Double?) -> String? {
+        guard let uv else { return nil }
+        switch uv {
+        case ..<3:
+            return "低"
+        case ..<6:
+            return "中"
+        case ..<8:
+            return "高"
+        case ..<11:
+            return "很高"
+        default:
+            return "极高"
+        }
+    }
+
+    private func sunriseSunsetText(_ info: WeatherInfo) -> String? {
+        let sunrise = info.sunrise
+        let sunset = info.sunset
+        if sunrise == nil, sunset == nil { return nil }
+        if let sunrise, let sunset {
+            return "日出 \(sunrise) · 日落 \(sunset)"
+        }
+        if let sunrise { return "日出 \(sunrise)" }
+        if let sunset { return "日落 \(sunset)" }
+        return nil
     }
 
     private struct HourlyItem {

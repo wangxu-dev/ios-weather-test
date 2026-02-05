@@ -35,7 +35,7 @@ extension View {
                 .background(.ultraThinMaterial, in: shape)
                 .overlay(
                     shape
-                        .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                        .stroke(Color.primary.opacity(0.14), lineWidth: 0.5)
                 )
         )
     }

@@ -275,7 +275,7 @@ struct HomeScreen: View {
                     // Space for the overlayed top bar. This scrolls away as you scroll up,
                     // so content can reach the top without being covered by an always-on header.
                     Color.clear
-                        .frame(height: topBarTotalHeight)
+                        .frame(height: scrollTopReserveHeight)
 
                     WeatherCardView(
                         place: place,
@@ -378,6 +378,12 @@ struct HomeScreen: View {
     private var topBarTotalHeight: CGFloat {
         // 44 content height + 4 top + 4 bottom.
         52
+    }
+
+    private var scrollTopReserveHeight: CGFloat {
+        // Reserve the full header height so large hero typography never gets clipped under the top bar.
+        // This space scrolls away as you scroll up, so content can still slide behind the header.
+        topBarTotalHeight
     }
 
     private var background: some View {
