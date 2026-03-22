@@ -1,292 +1,139 @@
-//
-//  HomeScreen.swift
-//  weather
-//
-
 import SwiftUI
-import CoreLocation
+import Observation
 
 struct HomeScreen: View {
-    @StateObject private var viewModel: HomeViewModel
-    @StateObject private var searchModel: CitySearchViewModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isSearching: Bool = false
-    @State private var isLocating: Bool = false
-    @State private var locationErrorMessage: String? = nil
-    @State private var locationProvider = CurrentLocationProvider()
-    @State private var resignSearchToken = UUID()
-    @State private var focusSearchToken: UUID? = nil
-    @State private var pageScrollMinY: [String: CGFloat] = [:]
+    @State private var viewModel: HomeViewModel
+    @FocusState private var searchFieldFocused: Bool
 
-    init(weatherProvider: any WeatherProviding, cityStore: any CityListStoring) {
-        _viewModel = StateObject(
-            wrappedValue: HomeViewModel(
-                weatherProvider: weatherProvider,
-                cityStore: cityStore,
-                weatherCacheStore: UserDefaultsWeatherCacheStore.shared
-            )
-        )
-
-        let citySuggester = WeatherComCnCitySuggester()
-        _searchModel = StateObject(wrappedValue: CitySearchViewModel(citySuggester: citySuggester))
+    init(viewModel: HomeViewModel) {
+        _viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         ZStack {
             background
                 .ignoresSafeArea()
 
-            WeatherGlassEffectContainer {
-                ZStack(alignment: .top) {
-                    content
+            VStack(spacing: DS.Spacing.md) {
+                header
+                    .padding(.horizontal, DS.Spacing.md)
+                    .padding(.top, DS.Spacing.sm)
 
-                    topBar
-                        .padding(.horizontal)
-                        .padding(.top, 4)
-                        .padding(.bottom, 4)
-                        // glassEffect may render in a separate layer; compositingGroup ensures opacity applies to the whole bar.
-                        .compositingGroup()
-                        .opacity(topBarOpacity)
-                        .allowsHitTesting(topBarOpacity > 0.01)
+                if viewModel.isSearchPresented {
+                    SearchOverlay(viewModel: viewModel, searchFieldFocused: $searchFieldFocused)
+                        .padding(.horizontal, DS.Spacing.md)
+                } else {
+                    content(viewModel: viewModel)
                 }
             }
         }
-        .onTapGesture {
-            guard isSearching else { return }
-            resignSearchToken = UUID()
+        .task {
+            await viewModel.start()
         }
-        .onChange(of: scenePhase) { _, newValue in
-            guard newValue == .active else { return }
-            guard !isSearching else { return }
-            viewModel.refreshAllPlaces()
+        .task(id: viewModel.searchQuery) {
+            guard viewModel.isSearchPresented else { return }
+            await viewModel.handleSearchQueryChanged()
         }
-        .onPreferenceChange(PageScrollMinYPreferenceKey.self) { dict in
-            pageScrollMinY.merge(dict) { _, new in new }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await viewModel.refreshAllIfNeeded(force: false) }
         }
-        .alert("定位失败", isPresented: Binding(
-            get: { locationErrorMessage != nil },
-            set: { if !$0 { locationErrorMessage = nil } }
-        )) {
+        .alert("提示", isPresented: Binding(get: { viewModel.bannerMessage != nil }, set: { if !$0 { viewModel.bannerMessage = nil } })) {
             Button("好", role: .cancel) {}
         } message: {
-            Text(locationErrorMessage ?? "")
+            Text(viewModel.bannerMessage ?? "")
         }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        VStack(spacing: 0) {
-            if isSearching {
-                searchScene
-                    .padding(.horizontal)
-                    .padding(.top, topBarTotalHeight)
-                    .transition(.opacity)
-            } else if viewModel.places.isEmpty {
-                emptyHint
-                    .padding(.horizontal)
-                    .padding(.top, topBarTotalHeight + 8)
-                    .transition(.opacity)
-            } else {
-                cityPager
-                    .padding(.top, 0)
-                    .transition(.opacity.combined(with: .scale(scale: 0.99, anchor: .top)))
-            }
+    private var background: some View {
+        let colors = backgroundColors
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    private var backgroundColors: [Color] {
+        if let state = viewModel.selectedPlace,
+           case .loaded(let snapshot, _) = viewModel.weatherStates[state.id] {
+            return WeatherPalette.background(
+                condition: snapshot.current.condition,
+                isDay: snapshot.current.isDay,
+                scheme: colorScheme
+            )
+        }
+        return WeatherPalette.background(condition: .clearSky, isDay: true, scheme: colorScheme)
+    }
+
+    private var header: some View {
+        HStack(spacing: DS.Spacing.sm) {
+            Text(viewModel.selectedPlace?.isCurrentLocation == true ? "当前位置" : (viewModel.selectedPlace?.name ?? "天气"))
+                .font(DS.Typography.subtitle)
+                .lineLimit(1)
 
             Spacer(minLength: 0)
-        }
-    }
 
-    private var topBar: some View {
-        HStack(spacing: 12) {
-            if isSearching {
-                searchField
-                    .frame(maxWidth: .infinity)
-                    .transition(.opacity)
-
-                closeButton
-                    .transition(.opacity)
-            } else {
-                Text(selectedPlaceTitle)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(1)
-                    .transition(.opacity)
-
-                Spacer(minLength: 0)
-
-                addButton
-                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    viewModel.showSearch()
+                }
+                searchFieldFocused = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.headline)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("添加城市")
         }
         .foregroundStyle(.primary)
-        // Keep header and search scene switching in sync even if state changes
-        // happen without an explicit withAnimation call.
-        .animation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10), value: isSearching)
     }
 
-    private var addButton: some View {
-        Button {
-            enterSearch()
-        } label: {
-            CircleIcon(symbolName: "plus")
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressableIconButtonStyle())
-        .accessibilityLabel("添加城市")
-    }
-
-    private var searchField: some View {
-        SystemSearchField(
-            placeholder: "搜索城市",
-            text: $searchModel.query,
-            resignToken: resignSearchToken,
-            focusToken: focusSearchToken,
-            onFocusChanged: { _ in },
-            onSubmit: { submitCurrentQuery() }
-        )
-        .frame(height: 44)
-    }
-
-    private var closeButton: some View {
-        Button {
-            exitSearch()
-        } label: {
-            CircleIcon(symbolName: "xmark")
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressableIconButtonStyle())
-        .accessibilityLabel("关闭搜索")
-    }
-
-    @ViewBuilder
-    private var searchScene: some View {
-        let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let mode = searchSceneMode(trimmedQuery: trimmed)
-        let showNoResults =
-            !trimmed.isEmpty
-            && trimmed.count >= 2
-            && !searchModel.isSearching
-            && !searchModel.isDebouncing
-            && searchModel.suggestions.isEmpty
-            && searchModel.lastCompletedQuery == trimmed
-
-        let listPlaces: [Place] = {
-            switch mode {
-            case .addedCities:
-                return viewModel.places
-            case .suggestions:
-                return searchModel.suggestions
-            case .searching, .noResults, .empty:
-                // Still show the primary action row even when there's no list content.
-                return trimmed.isEmpty ? viewModel.places : []
+    private func content(viewModel: HomeViewModel) -> some View {
+        VStack(spacing: DS.Spacing.md) {
+            if viewModel.places.isEmpty {
+                emptyState
+            } else {
+                cityPager(viewModel: viewModel)
             }
-        }()
+        }
+    }
 
-        let enableDelete = trimmed.isEmpty && mode == .addedCities
-        let maxHeight: CGFloat = trimmed.isEmpty ? 280 : 360
-        let primaryAction = HomeSearchList.PrimaryAction(title: isLocating ? "正在定位…" : "使用当前位置", systemImage: "location.fill")
-
-        VStack(alignment: .leading, spacing: 10) {
-            HomeSearchList(
-                primaryAction: primaryAction,
-                places: listPlaces,
-                maxHeight: maxHeight,
-                enableDelete: enableDelete,
-                onSelect: { place in
-                    resignSearchToken = UUID()
-                    switch mode {
-                    case .addedCities, .searching, .noResults, .empty:
-                        viewModel.selectPlaceId(place.id)
-                    case .suggestions:
-                        viewModel.addPlace(place)
-                    }
-                    exitSearch()
-                },
-                onDelete: enableDelete ? { place in
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.90, blendDuration: 0.10)) {
-                        viewModel.removePlaceId(place.id)
-                    }
-                } : nil,
-                onPrimaryAction: { useCurrentLocation() }
-            )
-            .padding(.top, 6)
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.12), value: mode)
-
-            if trimmed.isEmpty, mode == .addedCities {
-                TipsBanner(tips: TipLibrary.shared.tips(for: .searchAddedCities))
-                    .padding(.horizontal, 4)
-            }
-
-            // Only show "no results" after a completed search for the current query.
-            // We intentionally do not show a "searching..." hint to avoid any perceived flicker
-            // during fast, debounced searches.
-            Text("无匹配城市")
-                .font(.subheadline.weight(.semibold))
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.sm) {
+            Text("点击右上角 + 添加城市")
+                .font(DS.Typography.subtitle)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .opacity(showNoResults ? 1 : 0)
-                .contentTransition(.opacity)
-                .animation(.easeInOut(duration: 0.12), value: showNoResults)
+            Button("使用当前位置") {
+                Task { await viewModel.resolveCurrentLocationAndAdd() }
+            }
+            .buttonStyle(.borderedProminent)
         }
+        .padding(DS.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private enum SearchSceneMode: Hashable {
-        case empty
-        case addedCities
-        case searching
-        case suggestions
-        case noResults
-    }
-
-    private func searchSceneMode(trimmedQuery: String) -> SearchSceneMode {
-        if trimmedQuery.isEmpty {
-            return viewModel.places.isEmpty ? .empty : .addedCities
-        }
-
-        if !searchModel.suggestions.isEmpty {
-            return .suggestions
-        }
-
-        if searchModel.isDebouncing || searchModel.isSearching {
-            return .searching
-        }
-
-        // Only show "no results" if the search has completed for the current query.
-        // This avoids flashing "no results" while the user is still typing (debounced search not started yet).
-        if searchModel.lastCompletedQuery == trimmedQuery {
-            return .noResults
-        }
-
-        return .searching
-    }
-
-    private var cityPager: some View {
+    private func cityPager(viewModel: HomeViewModel) -> some View {
         TabView(selection: Binding(
-            get: { viewModel.selectedPlaceId ?? viewModel.places.first?.id ?? "" },
-            set: { viewModel.selectPlaceId($0) }
+            get: { viewModel.selectedPlaceID ?? viewModel.places.first?.id ?? "" },
+            set: { viewModel.select(placeID: $0) }
         )) {
             ForEach(viewModel.places) { place in
                 ScrollView {
-                    PageScrollMinYReporter(key: place.id, coordinateSpaceName: "HomeScroll-\(place.id)")
-                    // Space for the overlayed top bar. This scrolls away as you scroll up,
-                    // so content can reach the top without being covered by an always-on header.
-                    Color.clear
-                        .frame(height: scrollTopReserveHeight)
-
-                    WeatherCardView(
-                        place: place,
-                        state: viewModel.weatherByPlaceId[place.id] ?? .idle,
-                        isRefreshing: viewModel.refreshingPlaceIds.contains(place.id)
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.top, 2)
+                    if let data = viewModelData(for: place.id) {
+                        WeatherCard(data: data, state: viewModel.weatherStates[place.id] ?? .idle, onRefresh: {
+                            Task { await viewModel.refresh(placeID: place.id) }
+                        })
+                        .padding(.horizontal, DS.Spacing.md)
+                    } else {
+                        WeatherCard(data: nil, state: viewModel.weatherStates[place.id] ?? .idle, onRefresh: {
+                            Task { await viewModel.refresh(placeID: place.id) }
+                        })
+                        .padding(.horizontal, DS.Spacing.md)
+                    }
                 }
-                .coordinateSpace(name: "HomeScroll-\(place.id)")
                 .scrollIndicators(.hidden)
                 .tag(place.id)
             }
@@ -294,216 +141,163 @@ struct HomeScreen: View {
         .tabViewStyle(.page(indexDisplayMode: .automatic))
     }
 
-    private var emptyHint: some View {
-        Text("点击右上角“+”添加城市")
-            .font(.subheadline.weight(.semibold))
+    private func viewModelData(for id: PlaceID) -> HomeWeatherViewData? {
+        guard case .loaded(let snapshot, let stale) = viewModel.weatherStates[id] else { return nil }
+        return HomeWeatherViewDataMapper.map(snapshot: snapshot, isStale: stale)
+    }
+}
+
+private struct WeatherCard: View {
+    let data: HomeWeatherViewData?
+    let state: WeatherLoadState
+    let onRefresh: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.md) {
+            switch state {
+            case .idle:
+                loadingHint("准备就绪")
+            case .loading:
+                loadingHint("正在刷新天气…")
+            case .failed(let message):
+                loadingHint(message)
+            case .loaded:
+                if let data {
+                    loadedContent(data)
+                } else {
+                    loadingHint("暂无数据")
+                }
+            }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    onRefresh()
+                }
+            } label: {
+                Label("刷新", systemImage: "arrow.clockwise")
+                    .font(DS.Typography.caption)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, DS.Spacing.xs)
+        }
+        .padding(DS.Spacing.lg)
+        .background(Color.clear)
+    }
+
+    private func loadingHint(_ text: String) -> some View {
+        Text(text)
+            .font(DS.Typography.body)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func enterSearch() {
-        withAnimation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10)) {
-            isSearching = true
-        }
-        focusSearchToken = UUID()
-    }
+    private func loadedContent(_ data: HomeWeatherViewData) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.md) {
+            HStack(alignment: .top, spacing: DS.Spacing.sm) {
+                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                    Text(data.title)
+                        .font(DS.Typography.subtitle)
+                    Text(data.subtitle)
+                        .font(DS.Typography.body)
+                        .foregroundStyle(.secondary)
+                }
 
-    private func exitSearch() {
-        resignSearchToken = UUID()
-        focusSearchToken = nil
-        searchModel.clear()
-        withAnimation(.spring(response: 0.40, dampingFraction: 0.92, blendDuration: 0.10)) {
-            isSearching = false
-        }
-    }
+                Spacer(minLength: 0)
 
-    private func submitCurrentQuery() {
-        let trimmed = searchModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+                Image(systemName: data.symbolName)
+                    .font(.system(size: 42, weight: .semibold, design: .rounded))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.primary.opacity(0.9))
+            }
 
-        // Prevent selecting from stale suggestions while a new query is still searching.
-        guard !searchModel.isSearching else { return }
+            HStack(alignment: .firstTextBaseline, spacing: DS.Spacing.sm) {
+                Text(data.currentTemperature)
+                    .font(DS.Typography.title)
+                    .monospacedDigit()
+                Text(data.highLowText)
+                    .font(DS.Typography.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-        // 1) If user already added it, just select the first match.
-        if let existing = viewModel.places.first(where: { $0.name == trimmed }) {
-            resignSearchToken = UUID()
-            viewModel.selectPlaceId(existing.id)
-            exitSearch()
-            return
-        }
+            HStack(spacing: DS.Spacing.sm) {
+                Label("更新于 \(data.updateTimeText)", systemImage: "clock")
+                    .font(DS.Typography.caption)
+                    .foregroundStyle(.secondary)
 
-        // 2) If there is an exact match in current suggestions, accept it.
-        if let exact = searchModel.suggestions.first(where: { $0.name == trimmed }) {
-            resignSearchToken = UUID()
-            viewModel.addPlace(exact)
-            exitSearch()
-            return
-        }
+                if data.isStale {
+                    Text("缓存中")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-        // 3) If there is exactly one suggestion, accept it.
-        if searchModel.suggestions.count == 1, let only = searchModel.suggestions.first {
-            resignSearchToken = UUID()
-            viewModel.addPlace(only)
-            exitSearch()
-            return
-        }
+            Divider().opacity(0.30)
 
-        // Otherwise, accept as a legacy place (will be geocoded on demand).
-        resignSearchToken = UUID()
-        viewModel.addPlace(Place(name: trimmed))
-        exitSearch()
-    }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DS.Spacing.sm) {
+                metric(title: "体感", value: data.feelsLikeText)
+                metric(title: "湿度", value: data.humidityText)
+                metric(title: "风速", value: data.windText)
+                metric(title: "降水", value: data.precipitationText)
+            }
 
-    private var currentPlaceId: String {
-        viewModel.selectedPlaceId ?? viewModel.places.first?.id ?? ""
-    }
+            if !data.hourly.isEmpty {
+                Divider().opacity(0.30)
+                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                    Text("24 小时")
+                        .font(DS.Typography.caption)
+                        .foregroundStyle(.secondary)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: DS.Spacing.md) {
+                            ForEach(data.hourly) { item in
+                                VStack(spacing: DS.Spacing.xs) {
+                                    Text(item.time)
+                                    Text(item.temperatureText)
+                                    Text(item.popText)
+                                }
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.primary.opacity(0.92))
+                                .frame(minWidth: 48)
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
 
-    private var topBarFadeProgress: CGFloat {
-        // Only fade while not searching, and only when there's content to scroll.
-        guard !isSearching else { return 0 }
-        guard !viewModel.places.isEmpty else { return 0 }
-
-        // `minY` starts near 0 and becomes negative as you scroll up.
-        let minY = pageScrollMinY[currentPlaceId] ?? 0
-        let threshold: CGFloat = 44
-        let delta = max(0, -minY)
-        return min(1, delta / threshold)
-    }
-
-    private var topBarOpacity: CGFloat {
-        // Fade out completely while scrolling up.
-        max(0, 1 - topBarFadeProgress)
-    }
-
-    private var topBarTotalHeight: CGFloat {
-        // 44 content height + 4 top + 4 bottom.
-        52
-    }
-
-    private var scrollTopReserveHeight: CGFloat {
-        // Reserve the full header height so large hero typography never gets clipped under the top bar.
-        // This space scrolls away as you scroll up, so content can still slide behind the header.
-        topBarTotalHeight
-    }
-
-    private var background: some View {
-        LinearGradient(
-            colors: backgroundColors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var backgroundColors: [Color] {
-        let selectedId = viewModel.selectedPlaceId ?? viewModel.places.first?.id
-        if
-            let selectedId,
-            case .loaded(let payload) = viewModel.weatherByPlaceId[selectedId],
-            let info = payload.weatherInfo
-        {
-            return WeatherTheme.backgroundColors(
-                weatherCode: info.weatherCode,
-                isDay: info.isDay,
-                colorScheme: colorScheme
-            )
-        }
-
-        return WeatherTheme.backgroundColors(weatherCode: nil, isDay: nil, colorScheme: colorScheme)
-    }
-
-    private var shadowColor: Color {
-        switch colorScheme {
-        case .light:
-            return Color.black.opacity(0.10)
-        case .dark:
-            return Color.black.opacity(0.18)
-        @unknown default:
-            return Color.black.opacity(0.14)
-        }
-    }
-
-    private var selectedPlaceTitle: String {
-        guard let selectedPlaceId = viewModel.selectedPlaceId else { return "天气" }
-        guard let place = viewModel.places.first(where: { $0.id == selectedPlaceId }) else { return "天气" }
-        if place.id == "current-location" { return "当前位置" }
-        return place.name
-    }
-
-    private func useCurrentLocation() {
-        guard !isLocating else { return }
-        isLocating = true
-
-        Task { @MainActor in
-            defer { isLocating = false }
-            do {
-                let coordinate = try await locationProvider.requestCurrentCoordinate()
-                let place = Place(
-                    id: "current-location",
-                    name: "当前位置",
-                    latitude: coordinate.latitude,
-                    longitude: coordinate.longitude
-                )
-                viewModel.addPlace(place)
-                exitSearch()
-            } catch {
-                locationErrorMessage = error.localizedDescription
+            if !data.daily.isEmpty {
+                Divider().opacity(0.30)
+                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+                    Text("未来 7 天")
+                        .font(DS.Typography.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(data.daily) { item in
+                        HStack {
+                            Text(item.label)
+                                .frame(width: 56, alignment: .leading)
+                            Text(item.conditionText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("\(item.minText)/\(item.maxText)")
+                                .monospacedDigit()
+                        }
+                        .font(.caption)
+                        .padding(.vertical, 2)
+                    }
+                }
             }
         }
     }
-}
 
-private struct PageScrollMinYPreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGFloat] = [:]
-
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
-private struct PageScrollMinYReporter: View {
-    let key: String
-    let coordinateSpaceName: String
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .preference(
-                    key: PageScrollMinYPreferenceKey.self,
-                    value: [key: proxy.frame(in: .named(coordinateSpaceName)).minY]
-                )
+    private func metric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
         }
-        .frame(height: 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, DS.Spacing.xs)
     }
 }
-
-private struct CircleIcon: View {
-    let symbolName: String
-
-    var body: some View {
-        Image(systemName: symbolName)
-            .font(.system(size: 16, weight: .semibold))
-            .symbolRenderingMode(.hierarchical)
-            .frame(width: 36, height: 36, alignment: .center)
-            .weatherGlassEffect(in: Circle())
-    }
-}
-
-private struct PressableIconButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
-            .opacity(configuration.isPressed ? 0.92 : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.78, blendDuration: 0.06), value: configuration.isPressed)
-    }
-}
-
-#if DEBUG
-struct HomeScreen_Previews: PreviewProvider {
-    static var previews: some View {
-        HomeScreen(
-            weatherProvider: MockWeatherProvider(),
-            cityStore: UserDefaultsCityListStore()
-        )
-    }
-}
-#endif

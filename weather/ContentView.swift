@@ -1,27 +1,9 @@
-//
-//  ContentView.swift
-//  weather
-//
-//  Kept as a thin wrapper so the app entry point stays simple.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    let weatherProvider: any WeatherProviding
+    let environment: WeatherAppEnvironment
 
     var body: some View {
-        HomeScreen(
-            weatherProvider: weatherProvider,
-            cityStore: UserDefaultsCityListStore.shared
-        )
+        HomeScreen(viewModel: environment.homeViewModel)
     }
 }
-
-#if DEBUG
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView(weatherProvider: MockWeatherProvider())
-    }
-}
-#endif
