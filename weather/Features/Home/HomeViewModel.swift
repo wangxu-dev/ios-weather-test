@@ -1,169 +1,212 @@
-//
-//  HomeViewModel.swift
-//  weather
-//
-
 import Foundation
-import Combine
+import Observation
 
 @MainActor
-final class HomeViewModel: ObservableObject {
-    enum WeatherState {
+@Observable
+final class HomeViewModel {
+    enum SearchStatus: Equatable {
         case idle
-        case loading
-        case loaded(WeatherPayload)
-        case failed(String)
+        case searching
+        case empty
+        case results
+        case error(String)
     }
 
-    @Published private(set) var places: [Place] = []
-    @Published var selectedPlaceId: String?
-    @Published private(set) var weatherByPlaceId: [String: WeatherState] = [:]
-    @Published private(set) var refreshingPlaceIds: Set<String> = []
+    private let useCase: HomeUseCase
+    private let aiProvider: AIWeatherAssistantProviding
 
-    private let weatherProvider: any WeatherProviding
-    private let cityStore: any CityListStoring
-    private let weatherCacheStore: any WeatherCacheStoring
-    private var tasks: [String: Task<Void, Never>] = [:]
-    private var loadTask: Task<Void, Never>?
+    var places: [Place] = []
+    var selectedPlaceID: PlaceID?
+    var weatherStates: [PlaceID: WeatherLoadState] = [:]
+    var refreshingPlaceIDs: Set<PlaceID> = []
 
-    init(
-        weatherProvider: any WeatherProviding,
-        cityStore: any CityListStoring,
-        weatherCacheStore: any WeatherCacheStoring
-    ) {
-        self.weatherProvider = weatherProvider
-        self.cityStore = cityStore
-        self.weatherCacheStore = weatherCacheStore
+    var isSearchPresented = false
+    var searchQuery = ""
+    var suggestions: [Place] = []
+    var searchStatus: SearchStatus = .idle
 
-        loadTask = Task { [weak self] in
-            await self?.loadFromDisk()
-        }
+    var bannerMessage: String?
+    var aiSummary: AISummary?
+
+    private var refreshTasks: [PlaceID: Task<Void, Never>] = [:]
+
+    init(useCase: HomeUseCase, aiProvider: AIWeatherAssistantProviding) {
+        self.useCase = useCase
+        self.aiProvider = aiProvider
     }
 
-    func loadFromDisk() async {
-        let savedPlaces = await cityStore.loadPlaces()
-        let savedSelectedId = await cityStore.loadSelectedPlaceId()
-        let cached = await weatherCacheStore.loadCache()
+    func start() async {
+        let initial = await useCase.bootstrap()
+        self.places = initial.places
+        self.selectedPlaceID = initial.selectedID
+        self.weatherStates = initial.states
 
-        places = savedPlaces
-        selectedPlaceId = savedSelectedId ?? savedPlaces.first?.id
-
-        // Keep selected city consistent.
-        if let selectedPlaceId, !places.contains(where: { $0.id == selectedPlaceId }) {
-            self.selectedPlaceId = places.first?.id
+        if selectedPlaceID == nil {
+            selectedPlaceID = places.first?.id
         }
 
-        // Prime weather state map from cache so we can render immediately.
+        await refreshAllIfNeeded(force: false)
+    }
+
+    func refreshAllIfNeeded(force: Bool) async {
         for place in places {
-            if let payload = cached[place.id] {
-                weatherByPlaceId[place.id] = .loaded(payload)
-            } else if weatherByPlaceId[place.id] == nil {
-                weatherByPlaceId[place.id] = .idle
-            }
-        }
-
-        refreshAllPlaces()
-    }
-
-    func selectPlaceId(_ placeId: String) {
-        selectedPlaceId = placeId
-        Task { [cityStore] in
-            await cityStore.saveSelectedPlaceId(placeId)
-        }
-
-        // Always refresh when switching cities (hot update behavior).
-        fetchWeather(for: placeId)
-    }
-
-    func addPlace(_ place: Place) {
-        let trimmedName = place.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
-
-        var next = places.filter { $0.id != place.id }
-        if place.id == "current-location" {
-            next.insert(place, at: 0)
-        } else {
-            next.append(place)
-        }
-        places = next
-
-        if weatherByPlaceId[place.id] == nil {
-            weatherByPlaceId[place.id] = .idle
-        }
-
-        selectedPlaceId = place.id
-        Task { [cityStore, next, placeId = place.id] in
-            await cityStore.savePlaces(next)
-            await cityStore.saveSelectedPlaceId(placeId)
-        }
-        fetchWeather(for: place.id)
-    }
-
-    func removePlaceId(_ placeId: String) {
-        guard !placeId.isEmpty else { return }
-        guard places.contains(where: { $0.id == placeId }) else { return }
-
-        tasks[placeId]?.cancel()
-        tasks[placeId] = nil
-        refreshingPlaceIds.remove(placeId)
-        weatherByPlaceId.removeValue(forKey: placeId)
-
-        let next = places.filter { $0.id != placeId }
-        places = next
-
-        if selectedPlaceId == placeId {
-            selectedPlaceId = next.first?.id
-        }
-
-        Task { [cityStore, weatherCacheStore, next, selectedPlaceId] in
-            await cityStore.savePlaces(next)
-            await cityStore.saveSelectedPlaceId(selectedPlaceId)
-            await weatherCacheStore.remove(placeId: placeId)
+            guard force || shouldRefresh(place.id) else { continue }
+            await refresh(placeID: place.id)
         }
     }
 
-    func refreshAllPlaces() {
-        for place in places {
-            fetchWeather(for: place.id)
-        }
+    func refreshSelected() async {
+        guard let selectedPlaceID else { return }
+        await refresh(placeID: selectedPlaceID)
     }
 
-    func fetchWeather(for placeId: String) {
-        tasks[placeId]?.cancel()
-        let previous = weatherByPlaceId[placeId]
-        refreshingPlaceIds.insert(placeId)
-        if previous == nil {
-            weatherByPlaceId[placeId] = .idle
+    func refresh(placeID: PlaceID) async {
+        refreshTasks[placeID]?.cancel()
+        refreshingPlaceIDs.insert(placeID)
+        if weatherStates[placeID] == nil {
+            weatherStates[placeID] = .loading
         }
 
-        tasks[placeId] = Task { [weak self] in
+        let previous = weatherStates[placeID]
+        let task = Task { [weak self] in
+            guard let self else { return }
             do {
-                guard let place = self?.places.first(where: { $0.id == placeId }) else { return }
-                let payload = try await self?.weatherProvider.weather(for: place)
-                guard let payload else { return }
+                self.weatherStates[placeID] = .loading
+                let snapshot = try await useCase.refresh(placeID: placeID)
                 if Task.isCancelled { return }
-                self?.refreshingPlaceIds.remove(placeId)
-                self?.weatherByPlaceId[placeId] = .loaded(payload)
-                Task { [weatherCacheStore = self?.weatherCacheStore] in
-                    await weatherCacheStore?.save(placeId: placeId, payload: payload)
-                }
+                self.weatherStates[placeID] = .loaded(snapshot, isStale: false)
+                self.refreshingPlaceIDs.remove(placeID)
+                await self.updateAISummaryIfNeeded(placeID: placeID, snapshot: snapshot)
             } catch {
                 if Task.isCancelled { return }
-                self?.refreshingPlaceIds.remove(placeId)
-
-                // If we were refreshing an already-loaded city, keep the previous data to avoid UI flashing.
-                switch previous {
-                case .loaded:
-                    break
-                default:
-                    self?.weatherByPlaceId[placeId] = .failed(error.localizedDescription)
+                self.refreshingPlaceIDs.remove(placeID)
+                if case .loaded(let snapshot, _) = previous {
+                    self.weatherStates[placeID] = .loaded(snapshot, isStale: true)
+                } else {
+                    self.weatherStates[placeID] = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 }
             }
         }
+
+        refreshTasks[placeID] = task
+        await task.value
     }
 
-    func refreshSelectedPlace() {
-        guard let selectedPlaceId else { return }
-        fetchWeather(for: selectedPlaceId)
+    func select(placeID: PlaceID) {
+        selectedPlaceID = placeID
+        Task {
+            await useCase.persist(places: places, selectedID: selectedPlaceID)
+        }
+    }
+
+    func remove(placeID: PlaceID) {
+        refreshTasks[placeID]?.cancel()
+        refreshTasks[placeID] = nil
+        refreshingPlaceIDs.remove(placeID)
+
+        places.removeAll { $0.id == placeID }
+        weatherStates.removeValue(forKey: placeID)
+
+        if selectedPlaceID == placeID {
+            selectedPlaceID = places.first?.id
+        }
+
+        Task {
+            await useCase.removeCache(for: placeID)
+            await useCase.persist(places: places, selectedID: selectedPlaceID)
+        }
+    }
+
+    func addOrSelect(place: Place) {
+        if places.contains(where: { $0.id == place.id }) {
+            select(placeID: place.id)
+        } else {
+            if place.isCurrentLocation {
+                places.removeAll { $0.isCurrentLocation }
+                places.insert(place, at: 0)
+            } else {
+                places.append(place)
+            }
+            weatherStates[place.id] = .idle
+            select(placeID: place.id)
+            Task {
+                await useCase.persist(places: places, selectedID: selectedPlaceID)
+                await refresh(placeID: place.id)
+            }
+        }
+        hideSearch()
+    }
+
+    func resolveCurrentLocationAndAdd() async {
+        do {
+            let place = try await useCase.resolveCurrentLocation()
+            addOrSelect(place: place)
+        } catch {
+            bannerMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    func handleSearchQueryChanged() async {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            suggestions = []
+            searchStatus = .idle
+            return
+        }
+
+        searchStatus = .searching
+        do {
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let list = try await useCase.searchCity(query: trimmed, limit: 20)
+            if list.isEmpty {
+                searchStatus = .empty
+            } else {
+                searchStatus = .results
+            }
+            suggestions = list
+        } catch {
+            searchStatus = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            suggestions = []
+        }
+    }
+
+    func showSearch() {
+        isSearchPresented = true
+    }
+
+    func hideSearch() {
+        isSearchPresented = false
+        searchQuery = ""
+        suggestions = []
+        searchStatus = .idle
+    }
+
+    var selectedPlace: Place? {
+        guard let selectedPlaceID else { return places.first }
+        return places.first(where: { $0.id == selectedPlaceID })
+    }
+
+    var selectedViewData: HomeWeatherViewData? {
+        guard let place = selectedPlace else { return nil }
+        guard case .loaded(let snapshot, let isStale) = weatherStates[place.id] else { return nil }
+        return HomeWeatherViewDataMapper.map(snapshot: snapshot, isStale: isStale)
+    }
+
+    var selectedState: WeatherLoadState {
+        guard let id = selectedPlace?.id else { return .idle }
+        return weatherStates[id] ?? .idle
+    }
+
+    private func shouldRefresh(_ placeID: PlaceID) -> Bool {
+        if case .loaded(let snapshot, _) = weatherStates[placeID] {
+            return snapshot.isExpired
+        }
+        return true
+    }
+
+    private func updateAISummaryIfNeeded(placeID: PlaceID, snapshot: WeatherSnapshot) async {
+        guard selectedPlaceID == placeID else { return }
+        let context = UserContext(localeIdentifier: Locale.current.identifier, prefersConcise: true)
+        aiSummary = try? await aiProvider.summarize(snapshot: snapshot, context: context)
     }
 }

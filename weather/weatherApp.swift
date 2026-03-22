@@ -1,19 +1,13 @@
-//
-//  weatherApp.swift
-//  weather
-//
-//  Created by xu on 2026/1/25.
-//
-
 import SwiftUI
 
+@MainActor
 @main
 struct WeatherApp: App {
-    private var weatherProvider: OpenMeteoClient { OpenMeteoClient() }
+    @State private var environment = WeatherAppEnvironment()
 
     var body: some Scene {
         WindowGroup {
-            ContentView(weatherProvider: weatherProvider)
+            ContentView(environment: environment)
         }
     }
 }
