@@ -20,17 +20,23 @@ struct HomeScreen: View {
 
             VStack(spacing: DS.Spacing.md) {
                 WeatherGlassContainer {
-                    header
-                        .padding(.horizontal, DS.Spacing.md)
-                        .padding(.top, DS.Spacing.sm)
-                }
+                    VStack(spacing: DS.Spacing.sm) {
+                        header
 
-                if viewModel.isSearchPresented {
-                    SearchOverlay(viewModel: viewModel, searchFieldFocused: $searchFieldFocused)
-                        .padding(.horizontal, DS.Spacing.md)
-                } else {
-                    content(viewModel: viewModel)
+                        if viewModel.isSearchPresented {
+                            searchField
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .offset(y: -10).combined(with: .opacity),
+                                        removal: .offset(y: -6).combined(with: .opacity)
+                                    )
+                                )
+                        }
+                    }
+                    .padding(.horizontal, DS.Spacing.md)
+                    .padding(.top, DS.Spacing.sm)
                 }
+                content(viewModel: viewModel)
             }
         }
         .task {
@@ -70,33 +76,63 @@ struct HomeScreen: View {
 
     private var header: some View {
         HStack(spacing: DS.Spacing.sm) {
-            Text(viewModel.selectedPlace?.isCurrentLocation == true ? "当前位置" : (viewModel.selectedPlace?.name ?? "天气"))
-                .font(DS.Typography.subtitle)
-                .lineLimit(1)
-                .contentTransition(.opacity)
-
+            browsingTitle
             Spacer(minLength: 0)
-
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                    viewModel.showSearch()
-                }
-                searchFieldFocused = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.headline)
-                    .frame(width: 36, height: 36)
-                    .weatherInteractiveGlass(in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("添加城市")
+            headerActionButton
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(.primary)
+        .animation(.smooth(duration: 0.32, extraBounce: 0), value: viewModel.isSearchPresented)
+    }
+
+    private var browsingTitle: some View {
+        Text(viewModel.selectedPlace?.isCurrentLocation == true ? "当前位置" : (viewModel.selectedPlace?.name ?? "天气"))
+            .font(DS.Typography.subtitle)
+            .lineLimit(1)
+            .contentTransition(.opacity)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: DS.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("搜索城市", text: Bindable(viewModel).searchQuery)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(DS.Typography.subtitle)
+                .focused($searchFieldFocused)
+        }
+        .padding(.horizontal, DS.Spacing.md)
+        .padding(.vertical, 12)
+        .weatherInteractiveGlass(in: Capsule())
+    }
+
+    private var headerActionButton: some View {
+        Button(action: toggleSearch) {
+            Image(systemName: viewModel.isSearchPresented ? "xmark" : "plus")
+                .font(.headline)
+                .symbolVariant(.none)
+                .contentTransition(.opacity)
+                .frame(width: 36, height: 36)
+                .weatherInteractiveGlass(in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.isSearchPresented ? "关闭搜索" : "添加城市")
     }
 
     private func content(viewModel: HomeViewModel) -> some View {
         VStack(spacing: DS.Spacing.md) {
-            if viewModel.places.isEmpty {
+            if viewModel.isSearchPresented {
+                SearchOverlay(viewModel: viewModel)
+                    .padding(.horizontal, DS.Spacing.md)
+                    .transition(
+                        .asymmetric(
+                            insertion: .offset(y: -12).combined(with: .opacity),
+                            removal: .opacity
+                        )
+                    )
+            } else if viewModel.places.isEmpty {
                 emptyState
             } else {
                 cityPager(viewModel: viewModel)
@@ -151,6 +187,24 @@ struct HomeScreen: View {
         guard case .loaded(let snapshot, let stale) = viewModel.weatherStates[id] else { return nil }
         return HomeWeatherViewDataMapper.map(snapshot: snapshot, isStale: stale)
     }
+
+    private func presentSearch() {
+        withAnimation(.smooth(duration: 0.34, extraBounce: 0)) {
+            viewModel.showSearch()
+        }
+        searchFieldFocused = true
+    }
+
+    private func dismissSearch() {
+        withAnimation(.smooth(duration: 0.26, extraBounce: 0)) {
+            viewModel.hideSearch()
+        }
+        searchFieldFocused = false
+    }
+
+    private func toggleSearch() {
+        viewModel.isSearchPresented ? dismissSearch() : presentSearch()
+    }
 }
 
 private struct WeatherCard: View {
@@ -199,13 +253,9 @@ private struct WeatherCard: View {
     private func loadedContent(_ data: HomeWeatherViewData) -> some View {
         VStack(alignment: .leading, spacing: DS.Spacing.md) {
             HStack(alignment: .top, spacing: DS.Spacing.sm) {
-                VStack(alignment: .leading, spacing: DS.Spacing.xs) {
-                    Text(data.title)
-                        .font(DS.Typography.subtitle)
-                    Text(data.subtitle)
-                        .font(DS.Typography.body)
-                        .foregroundStyle(.secondary)
-                }
+                Text(data.subtitle)
+                    .font(DS.Typography.body)
+                    .foregroundStyle(.secondary)
 
                 Spacer(minLength: 0)
 
