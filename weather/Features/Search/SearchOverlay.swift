@@ -7,8 +7,14 @@ struct SearchOverlay: View {
 
     var body: some View {
         VStack(spacing: DS.Spacing.sm) {
-            searchFieldRow
-            locationButton
+            WeatherGlassContainer {
+                searchFieldRow
+            }
+
+            WeatherGlassContainer {
+                locationButton
+            }
+
             contentList
             statusHint
         }
@@ -21,7 +27,7 @@ struct SearchOverlay: View {
                 .autocorrectionDisabled()
                 .padding(.horizontal, DS.Spacing.md)
                 .padding(.vertical, DS.Spacing.sm)
-                .background(.ultraThinMaterial)
+                .weatherInteractiveGlass(in: Capsule())
                 .focused(searchFieldFocused)
 
             Button("关闭") {
@@ -31,6 +37,9 @@ struct SearchOverlay: View {
                 searchFieldFocused.wrappedValue = false
             }
             .buttonStyle(.plain)
+            .padding(.horizontal, DS.Spacing.md)
+            .padding(.vertical, DS.Spacing.sm)
+            .weatherInteractiveGlass(in: Capsule())
         }
     }
 
@@ -41,10 +50,11 @@ struct SearchOverlay: View {
             Label("使用当前位置", systemImage: "location.fill")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, DS.Spacing.md)
-                .padding(.vertical, DS.Spacing.xs)
+                .padding(.vertical, DS.Spacing.sm)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+        .weatherInteractiveGlass(in: RoundedRectangle(cornerRadius: DS.Radius.panel, style: .continuous))
     }
 
     private var contentList: some View {

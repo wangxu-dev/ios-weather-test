@@ -19,9 +19,11 @@ struct HomeScreen: View {
                 .ignoresSafeArea()
 
             VStack(spacing: DS.Spacing.md) {
-                header
-                    .padding(.horizontal, DS.Spacing.md)
-                    .padding(.top, DS.Spacing.sm)
+                WeatherGlassContainer {
+                    header
+                        .padding(.horizontal, DS.Spacing.md)
+                        .padding(.top, DS.Spacing.sm)
+                }
 
                 if viewModel.isSearchPresented {
                     SearchOverlay(viewModel: viewModel, searchFieldFocused: $searchFieldFocused)
@@ -71,6 +73,7 @@ struct HomeScreen: View {
             Text(viewModel.selectedPlace?.isCurrentLocation == true ? "当前位置" : (viewModel.selectedPlace?.name ?? "天气"))
                 .font(DS.Typography.subtitle)
                 .lineLimit(1)
+                .contentTransition(.opacity)
 
             Spacer(minLength: 0)
 
@@ -83,7 +86,7 @@ struct HomeScreen: View {
                 Image(systemName: "plus")
                     .font(.headline)
                     .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .weatherInteractiveGlass(in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("添加城市")
@@ -109,7 +112,10 @@ struct HomeScreen: View {
             Button("使用当前位置") {
                 Task { await viewModel.resolveCurrentLocationAndAdd() }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
+            .padding(.horizontal, DS.Spacing.md)
+            .padding(.vertical, DS.Spacing.sm)
+            .weatherInteractiveGlass(in: Capsule())
         }
         .padding(DS.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
